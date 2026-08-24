@@ -14,3 +14,4 @@ L’interface propriétaire est une démo : tout e-mail et mot de passe permette
 ## Déploiement
 
 Le projet est un site Vite statique : importez le dépôt GitHub dans Vercel ou Netlify. La commande de build est `npm run build` et le dossier publié est `dist`.
+# nemsite
