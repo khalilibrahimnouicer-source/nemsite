@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node server.js\" \"vite\"",
+    "dev": "concurrently \"node --env-file-if-exists=.env.local server.js\" \"vite\"",
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js"

@@ -4,33 +4,24 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dataDir = path.join(__dirname, 'data')
-const dataFile = path.join(dataDir, 'store.json')
-const port = Number(process.env.PORT || 8787)
-const email = process.env.OWNER_EMAIL
-const passwordHash = process.env.OWNER_PASSWORD_HASH
-const password = process.env.OWNER_PASSWORD
-if (!email || (!passwordHash && !password)) console.warn('[YNR] Set OWNER_EMAIL and OWNER_PASSWORD_HASH (recommended) in .env.local.')
-const sessions = new Map()
-const seed = { vehicles: [], requests: [], unavailable: [] }
-async function readStore(){ try{return JSON.parse(await fs.readFile(dataFile,'utf8'))}catch{await fs.mkdir(dataDir,{recursive:true});await fs.writeFile(dataFile,JSON.stringify(seed,null,2));return seed} }
-async function writeStore(store){await fs.mkdir(dataDir,{recursive:true});await fs.writeFile(dataFile,JSON.stringify(store,null,2))}
-function auth(req,res,next){const token=req.headers.cookie?.match(/ynr_session=([^;]+)/)?.[1];if(!token||!sessions.has(token))return res.status(401).json({message:'Authentification requise'});req.session=token;next()}
-function safe(v){return typeof v==='string'?v.trim().slice(0,1000):''}
-const app=express();app.use(express.json({limit:'100kb'}));app.use(express.static(path.join(__dirname,'dist')))
-app.get('/api/session',(req,res)=>{const token=req.headers.cookie?.match(/ynr_session=([^;]+)/)?.[1];res.json({authenticated:Boolean(token&&sessions.has(token))})})
-app.post('/api/auth/login',async(req,res)=>{const inputEmail=safe(req.body.email).toLowerCase();const inputPassword=String(req.body.password||'');const validEmail=email&&inputEmail===email.toLowerCase();const validPassword=passwordHash?await bcrypt.compare(inputPassword,passwordHash):password&&crypto.timingSafeEqual(Buffer.from(inputPassword),Buffer.from(password));if(!validEmail||!validPassword)return res.status(401).json({message:'Identifiants invalides'});const token=crypto.randomBytes(32).toString('hex');sessions.set(token,Date.now()+86400000);res.setHeader('Set-Cookie',`ynr_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);res.json({authenticated:true})})
+const root=path.dirname(fileURLToPath(import.meta.url)), dataDir=path.join(root,'data'), file=path.join(dataDir,'store.json'), port=Number(process.env.PORT||8787)
+const defaults={settings:{brand:'YNR Luxury Rent',tagline:'Location de véhicules premium pour professionnels et particuliers',phone:'+7 46 38 99 31',whatsapp:'33600000000',email:'ynr.location@gmail.com'},vehicles:[{id:'v1',name:'BMW M3 Competition',category:'Berline sportive',price:490,deposit:3000,description:'Une sportive précise et confortable pour les trajets professionnels comme les escapades du week-end.',photos:['https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=85'],active:true}],requests:[],blocked:[]}
+const sessions=new Map(); const clean=(v,max=1000)=>typeof v==='string'?v.trim().slice(0,max):''
+async function read(){try{return JSON.parse(await fs.readFile(file,'utf8'))}catch{await fs.mkdir(dataDir,{recursive:true});await fs.writeFile(file,JSON.stringify(defaults,null,2));return structuredClone(defaults)}}
+async function write(v){await fs.mkdir(dataDir,{recursive:true});const tmp=`${file}.tmp`;await fs.writeFile(tmp,JSON.stringify(v,null,2));await fs.rename(tmp,file)}
+function auth(req,res,next){const t=req.headers.cookie?.match(/ynr_session=([^;]+)/)?.[1];if(!t||!sessions.has(t)||sessions.get(t)<Date.now())return res.status(401).json({message:'Authentification requise'});req.session=t;next()}
+const app=express();app.use(express.json({limit:'10mb'}));app.use(express.static(path.join(root,'dist')))
+app.get('/api/public',async(_,res)=>{const s=await read();res.json({settings:s.settings,vehicles:s.vehicles.filter(v=>v.active),blocked:s.blocked})})
+app.post('/api/auth/login',async(req,res)=>{const email=clean(req.body?.email,180).toLowerCase(),pw=String(req.body?.password||''),owner=process.env.OWNER_EMAIL?.toLowerCase(),hash=process.env.OWNER_PASSWORD_HASH;let valid=Boolean(owner&&email===owner&&hash&&await bcrypt.compare(pw,hash));if(!valid)return res.status(401).json({message:'Identifiants invalides'});const t=crypto.randomBytes(32).toString('hex');sessions.set(t,Date.now()+86400000);res.setHeader('Set-Cookie',`ynr_session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);res.json({ok:true})})
 app.post('/api/auth/logout',auth,(req,res)=>{sessions.delete(req.session);res.setHeader('Set-Cookie','ynr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');res.status(204).end()})
-app.get('/api/vehicles',async(_,res)=>res.json((await readStore()).vehicles))
-app.get('/api/requests',auth,async(_,res)=>res.json((await readStore()).requests))
-app.post('/api/requests',async(req,res)=>{const body=req.body||{};if(!safe(body.name)||!safe(body.email)||!safe(body.car)||!safe(body.dates))return res.status(400).json({message:'Champs requis manquants'});const store=await readStore();const item={id:crypto.randomUUID(),name:safe(body.name),email:safe(body.email),car:safe(body.car),dates:safe(body.dates),message:safe(body.message),status:'Nouveau',createdAt:new Date().toISOString()};store.requests.unshift(item);await writeStore(store);res.status(201).json(item)})
-app.patch('/api/requests/:id',auth,async(req,res)=>{const store=await readStore();const item=store.requests.find(x=>x.id===req.params.id);if(!item)return res.status(404).json({message:'Demande introuvable'});item.status=req.body.status==='Traité'?'Traité':'Nouveau';await writeStore(store);res.json(item)})
-app.delete('/api/requests/:id',auth,async(req,res)=>{const store=await readStore();store.requests=store.requests.filter(x=>x.id!==req.params.id);await writeStore(store);res.status(204).end()})
-app.get('/api/unavailable',auth,async(_,res)=>res.json((await readStore()).unavailable))
-app.put('/api/unavailable',auth,async(req,res)=>{const store=await readStore();store.unavailable=Array.isArray(req.body)?req.body:[];await writeStore(store);res.json(store.unavailable)})
-app.use((req,res)=>res.sendFile(path.join(__dirname,'dist','index.html')))
-app.listen(port,()=>console.log(`[YNR] backend listening on ${port}`))
-
+app.get('/api/admin',auth,async(_,res)=>res.json(await read()))
+app.post('/api/requests',async(req,res)=>{const b=req.body||{};if(!clean(b.name,120)||!clean(b.email,180)||!clean(b.vehicle,120)||!clean(b.start,20)||!clean(b.end,20))return res.status(400).json({message:'Veuillez compléter les champs obligatoires.'});const s=await read(),item={id:crypto.randomUUID(),name:clean(b.name,120),email:clean(b.email,180),phone:clean(b.phone,40),type:b.type==='professionnel'?'professionnel':'particulier',vehicle:clean(b.vehicle,120),start:clean(b.start,20),end:clean(b.end,20),message:clean(b.message,1500),status:'nouvelle',createdAt:new Date().toISOString()};s.requests.unshift(item);await write(s);res.status(201).json(item)})
+app.patch('/api/requests/:id',auth,async(req,res)=>{const s=await read(),r=s.requests.find(x=>x.id===req.params.id);if(!r)return res.sendStatus(404);r.status=['nouvelle','en_cours','traitee'].includes(req.body.status)?req.body.status:r.status;await write(s);res.json(r)})
+app.delete('/api/requests/:id',auth,async(req,res)=>{const s=await read();s.requests=s.requests.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
+app.post('/api/vehicles',auth,async(req,res)=>{const b=req.body||{},s=await read();const v={id:crypto.randomUUID(),name:clean(b.name,120),category:clean(b.category,80),price:Math.max(0,Number(b.price)||0),deposit:Math.max(0,Number(b.deposit)||0),description:clean(b.description,1500),photos:Array.isArray(b.photos)?b.photos.slice(0,8).map(x=>clean(x,200000)):[],active:b.active!==false,updatedAt:new Date().toISOString()};if(!v.name)return res.status(400).json({message:'Nom requis'});s.vehicles.unshift(v);await write(s);res.status(201).json(v)})
+app.patch('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),v=s.vehicles.find(x=>x.id===req.params.id);if(!v)return res.sendStatus(404);Object.assign(v,{name:clean(req.body.name,120)||v.name,category:clean(req.body.category,80)||v.category,price:Math.max(0,Number(req.body.price??v.price)),deposit:Math.max(0,Number(req.body.deposit??v.deposit)),description:clean(req.body.description,1500),photos:Array.isArray(req.body.photos)?req.body.photos.slice(0,8):v.photos,active:req.body.active!==undefined?Boolean(req.body.active):v.active,updatedAt:new Date().toISOString()});await write(s);res.json(v)})
+app.delete('/api/vehicles/:id',auth,async(req,res)=>{const s=await read();s.vehicles=s.vehicles.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
+app.put('/api/calendar',auth,async(req,res)=>{const s=await read();s.blocked=Array.isArray(req.body)?req.body.filter(x=>x.vehicleId&&x.start&&x.end).slice(0,500):[];await write(s);res.json(s.blocked)})
+app.put('/api/settings',auth,async(req,res)=>{const s=await read();s.settings={...s.settings,...Object.fromEntries(Object.entries(req.body||{}).map(([k,v])=>[k,clean(v,500)]))};await write(s);res.json(s.settings)})
+app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')));app.listen(port,()=>console.log(`[YNR] API listening on ${port}`))
 export default app
