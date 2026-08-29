@@ -1,0 +1,13 @@
+[build]
+  # La commande de build doit cibler le répertoire que nous avons identifié pour le code client.
+  command = "npm run build"
+  # Le répertoire final des fichiers statiques (output de Vite)
+  publish = "m3dz-cs-site/dist"
+
+[build.environment]
+  # IMPORTANT: Remplacer par votre ID de base de données Netlify.
+  NETLIFY_DATABASE_ID = "YOUR_DATABASE_ID"
+
+[functions]
+  # Le répertoire contenant les fonctions serverless (backend)
+  directory = "m3dz-cs-site/netlify/functions"
