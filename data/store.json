@@ -1,0 +1,25 @@
+{
+  "settings": {
+    "brand": "YNR Luxury Rent",
+    "tagline": "Location de véhicules premium pour professionnels et particuliers",
+    "phone": "+7 46 38 99 31",
+    "whatsapp": "33600000000",
+    "email": "ynr.location@gmail.com"
+  },
+  "vehicles": [
+    {
+      "id": "v1",
+      "name": "BMW M3 Competition",
+      "category": "Berline sportive",
+      "price": 490,
+      "deposit": 3000,
+      "description": "Une sportive précise et confortable pour les trajets professionnels comme les escapades du week-end.",
+      "photos": [
+        "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=85"
+      ],
+      "active": true
+    }
+  ],
+  "requests": [],
+  "blocked": []
+}
