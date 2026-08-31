@@ -14,6 +14,7 @@ async function write(v){await fs.mkdir(dataDir,{recursive:true});const tmp=`${fi
 function auth(req,res,next){const t=req.headers.cookie?.match(/ynr_session=([^;]+)/)?.[1];if(!t||!sessions.has(t)||sessions.get(t)<Date.now())return res.status(401).json({message:'Authentification requise'});req.session=t;next()}
 const app=express();app.use(express.json({limit:'10mb'}));app.use(express.static(path.join(root,'dist')))
 app.get('/api/public',async(_,res)=>{const s=await read();res.json({settings:s.settings,vehicles:s.vehicles.filter(v=>v.active),blocked:s.blocked})})
+app.get('/api/health',(_,res)=>res.json({ok:true}))
 app.post('/api/auth/login',async(req,res)=>{const email=clean(req.body?.email,180).toLowerCase(),pw=String(req.body?.password||'');let valid=Boolean(email===OWNER_EMAIL&&await bcrypt.compare(pw,OWNER_PASSWORD_HASH));if(!valid)return res.status(401).json({message:'Identifiants invalides'});const t=crypto.randomBytes(32).toString('hex');sessions.set(t,Date.now()+86400000);res.setHeader('Set-Cookie',`ynr_session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);res.json({ok:true})})
 app.get('/api/auth/session',auth,(req,res)=>res.json({ok:true}));app.post('/api/auth/logout',auth,(req,res)=>{sessions.delete(req.session);res.setHeader('Set-Cookie','ynr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');res.status(204).end()})
 app.get('/api/admin',auth,async(_,res)=>res.json(await read()))
