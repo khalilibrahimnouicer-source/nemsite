@@ -23,5 +23,6 @@ app.patch('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),v=s.veh
 app.delete('/api/vehicles/:id',auth,async(req,res)=>{const s=await read();s.vehicles=s.vehicles.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
 app.put('/api/calendar',auth,async(req,res)=>{const s=await read();s.blocked=Array.isArray(req.body)?req.body.filter(x=>x.vehicleId&&x.start&&x.end).slice(0,500):[];await write(s);res.json(s.blocked)})
 app.put('/api/settings',auth,async(req,res)=>{const s=await read();s.settings={...s.settings,...Object.fromEntries(Object.entries(req.body||{}).map(([k,v])=>[k,clean(v,500)]))};await write(s);res.json(s.settings)})
-app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')));app.listen(port,()=>console.log(`[YNR] API listening on ${port}`))
+app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')))
+if(!process.env.VERCEL) app.listen(port,()=>console.log(`[YNR] API listening on ${port}`))
 export default app
