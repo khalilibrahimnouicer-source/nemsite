@@ -5,6 +5,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 const root=path.dirname(fileURLToPath(import.meta.url)), dataDir=path.join(root,'data'), file=path.join(dataDir,'store.json'), port=Number(process.env.PORT||8787)
+const OWNER_EMAIL=String(process.env.OWNER_EMAIL||'ynr.location@gmail.com').trim().toLowerCase()
+const OWNER_PASSWORD_HASH=process.env.OWNER_PASSWORD_HASH||'$2b$12$rc/J4DF6HAznQhX5.n9voeo82H3QqymCfkWUUE21WlFiCPOqvOb/G'
 const defaults={settings:{brand:'YNR Luxury Rent',tagline:'Location de véhicules premium pour professionnels et particuliers',phone:'06 48 02 37 74 · 07 45 45 41',whatsapp:'33648023774',email:'ynr.location@gmail.com',instagram:'https://instagram.com/ynr_location',snapchat:'https://t.snapchat.com/ECABDZ05'},vehicles:[{id:'v1',name:'BMW M3 Competition',category:'Berline sportive',price:490,deposit:3000,description:'Une sportive précise et confortable pour les trajets professionnels comme les escapades du week-end.',photos:['https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=85'],active:true}],requests:[],blocked:[]}
 const sessions=new Map(); const clean=(v,max=1000)=>typeof v==='string'?v.trim().slice(0,max):''
 async function read(){try{return JSON.parse(await fs.readFile(file,'utf8'))}catch{await fs.mkdir(dataDir,{recursive:true});await fs.writeFile(file,JSON.stringify(defaults,null,2));return structuredClone(defaults)}}
@@ -12,7 +14,8 @@ async function write(v){await fs.mkdir(dataDir,{recursive:true});const tmp=`${fi
 function auth(req,res,next){const t=req.headers.cookie?.match(/ynr_session=([^;]+)/)?.[1];if(!t||!sessions.has(t)||sessions.get(t)<Date.now())return res.status(401).json({message:'Authentification requise'});req.session=t;next()}
 const app=express();app.use(express.json({limit:'10mb'}));app.use(express.static(path.join(root,'dist')))
 app.get('/api/public',async(_,res)=>{const s=await read();res.json({settings:s.settings,vehicles:s.vehicles.filter(v=>v.active),blocked:s.blocked})})
-app.post('/api/auth/login',async(req,res)=>{const email=clean(req.body?.email,180).toLowerCase(),pw=String(req.body?.password||''),owner=process.env.OWNER_EMAIL?.toLowerCase(),hash=process.env.OWNER_PASSWORD_HASH;let valid=Boolean(owner&&email===owner&&hash&&await bcrypt.compare(pw,hash));if(!valid)return res.status(401).json({message:'Identifiants invalides'});const t=crypto.randomBytes(32).toString('hex');sessions.set(t,Date.now()+86400000);res.setHeader('Set-Cookie',`ynr_session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);res.json({ok:true})})
+app.get('/api/health',(_,res)=>res.json({ok:true}))
+app.post('/api/auth/login',async(req,res)=>{const email=clean(req.body?.email,180).toLowerCase(),pw=String(req.body?.password||'');let valid=Boolean(email===OWNER_EMAIL&&await bcrypt.compare(pw,OWNER_PASSWORD_HASH));if(!valid)return res.status(401).json({message:'Identifiants invalides'});const t=crypto.randomBytes(32).toString('hex');sessions.set(t,Date.now()+86400000);res.setHeader('Set-Cookie',`ynr_session=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);res.json({ok:true})})
 app.get('/api/auth/session',auth,(req,res)=>res.json({ok:true}));app.post('/api/auth/logout',auth,(req,res)=>{sessions.delete(req.session);res.setHeader('Set-Cookie','ynr_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');res.status(204).end()})
 app.get('/api/admin',auth,async(_,res)=>res.json(await read()))
 app.post('/api/requests',async(req,res)=>{const b=req.body||{};if(!clean(b.name,120)||!clean(b.email,180)||!clean(b.vehicle,120)||!clean(b.start,20)||!clean(b.end,20))return res.status(400).json({message:'Veuillez compléter les champs obligatoires.'});const s=await read(),item={id:crypto.randomUUID(),name:clean(b.name,120),email:clean(b.email,180),phone:clean(b.phone,40),type:b.type==='professionnel'?'professionnel':'particulier',vehicle:clean(b.vehicle,120),start:clean(b.start,20),end:clean(b.end,20),message:clean(b.message,1500),status:'nouvelle',createdAt:new Date().toISOString()};s.requests.unshift(item);await write(s);res.status(201).json(item)})
@@ -23,5 +26,6 @@ app.patch('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),v=s.veh
 app.delete('/api/vehicles/:id',auth,async(req,res)=>{const s=await read();s.vehicles=s.vehicles.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
 app.put('/api/calendar',auth,async(req,res)=>{const s=await read();s.blocked=Array.isArray(req.body)?req.body.filter(x=>x.vehicleId&&x.start&&x.end).slice(0,500):[];await write(s);res.json(s.blocked)})
 app.put('/api/settings',auth,async(req,res)=>{const s=await read();s.settings={...s.settings,...Object.fromEntries(Object.entries(req.body||{}).map(([k,v])=>[k,clean(v,500)]))};await write(s);res.json(s.settings)})
-app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')));app.listen(port,()=>console.log(`[YNR] API listening on ${port}`))
+app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')))
+if(!process.env.VERCEL) app.listen(port,()=>console.log(`[YNR] API listening on ${port}`))
 export default app
