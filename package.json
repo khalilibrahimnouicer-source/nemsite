@@ -10,6 +10,7 @@
     "start": "node --env-file-if-exists=.env.local server.js"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "@vitejs/plugin-react": "latest",
     "bcryptjs": "^3.0.3",
     "concurrently": "^10.0.5",
