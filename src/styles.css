@@ -6,15 +6,17 @@
 @media(min-width:901px){html,body,#root{width:100%;min-width:100%;max-width:none;overflow-x:hidden;display:block}.site,.site main,.site .hero,.site .section,.site .proof-band,.site .request-section{transform:none!important;zoom:1!important}.site{width:100%;min-height:100vh}.site main{width:100%}.site .hero{width:100%;min-height:680px;padding:96px clamp(56px,9vw,160px);grid-template-columns:minmax(420px,1fr) minmax(520px,1.1fr);gap:clamp(72px,10vw,180px)}.site .hero-logo{width:min(42vw,620px);justify-self:center}.site .hero-copy{width:100%;max-width:720px}.site .hero h1{font-size:clamp(78px,8vw,132px);line-height:.84}.site .hero .lead{font-size:20px;max-width:640px}.site .proof-band{width:min(1280px,calc(100% - 112px));padding:28px 0;margin:0 auto}.site .section{width:min(1280px,calc(100% - 112px));padding:112px 0;margin:0 auto}.site .section>header{height:auto;padding:0 0 36px;border:0;background:transparent}.site .section h2{font-size:clamp(48px,5vw,82px);line-height:.95}.site .vehicle-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}.site .vehicle-card{min-width:0}.site .vehicle-card img{width:100%;height:280px}.site .request-section{width:min(1280px,calc(100% - 112px));display:grid;grid-template-columns:.8fr 1.2fr;gap:72px;align-items:start}.site .request{max-width:none}.site .footer{width:100%;padding:42px clamp(56px,9vw,160px)}}
 @media(min-width:901px){.admin-page{width:100%;min-height:100vh}.admin-page header{min-height:82px}.admin-content{width:min(1380px,calc(100% - 112px));padding:86px 0}.admin-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.admin-panel{grid-column:span 3}.fleet-manager{width:100%}.vehicle-admin-list{grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-admin-card{min-height:150px}.admin-content h1{font-size:clamp(64px,6vw,104px);line-height:.88}}
 @media(min-width:901px){
-  .site{font-size:16px!important;zoom:1!important;display:block;width:100%;overflow:hidden}
+  html,body,#root{width:100%;min-width:0;max-width:none;overflow-x:hidden}
+  .site{font-size:16px!important;zoom:1!important;display:block;width:100%;min-width:0;overflow:hidden}
+  .site *{zoom:1!important}
   .site *{zoom:1!important}
   .site>header{width:100%;min-height:78px;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between}
   .site>header>.wordmark{flex:0 0 auto;display:block}
   .site>header>nav{display:flex;flex:1 1 auto;justify-content:center;align-items:center}
   .site>header>.header-call{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px}
   .site .hero{width:100%;max-width:1440px;min-height:calc(100vh - 112px);box-sizing:border-box;display:grid!important;grid-template-columns:minmax(420px,0.9fr) minmax(480px,1.1fr)!important;align-items:center;gap:clamp(48px,7vw,120px);padding:80px clamp(48px,7vw,112px)!important;margin:0 auto}
-  .site .hero-logo{width:clamp(320px,36vw,560px)!important;max-width:560px;justify-self:center;margin:0;order:1}.site .hero-logo img{width:100%;height:auto;display:block;object-fit:contain}
-  .site .hero-copy{width:min(100%,680px);max-width:680px;justify-self:start;order:2;text-align:left;margin:0}.site .hero-copy .eyebrow,.site .hero-copy h1,.site .hero-copy .lead{display:block;width:100%;text-align:left;margin-left:0;margin-right:0}
+  .site .hero-logo{width:clamp(320px,36vw,560px)!important;max-width:560px;justify-self:center;margin:0;order:2}.site .hero-logo img{width:100%;height:auto;display:block;object-fit:contain}.site .hero-copy{order:1}
+  .site .hero-copy{width:min(100%,680px);max-width:680px;justify-self:start;order:1!important;text-align:left;margin:0}.site .hero-copy .eyebrow,.site .hero-copy h1,.site .hero-copy .lead{display:block;width:100%;text-align:left;margin-left:0;margin-right:0}
   .site .hero-copy>*{max-width:100%}
   .site .hero h1{font-size:clamp(64px,6.8vw,112px)!important;line-height:.86!important;white-space:normal}
   .site .hero .lead{font-size:18px!important;line-height:1.5!important;max-width:580px}
