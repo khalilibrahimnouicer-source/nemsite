@@ -25,3 +25,28 @@
 @media(max-width:900px){.public-header{height:70px}.public-nav{gap:18px}.public-nav a{font-size:8px}.hero-v2-copy{left:24px;right:24px;bottom:100px}.hero-caption{width:260px;right:24px}.hero-v2 h1{font-size:clamp(54px,9vw,88px)}.ynr-logo.compact{width:108px}.experience-band{gap:45px}}
 @media(max-width:800px){.public-header{padding:0 18px}.desktop-logo{display:flex}.ynr-logo.compact{width:105px;height:44px}.header-actions{display:none}.mobile-menu{display:flex;margin-left:auto}.public-nav{left:14px;right:14px;top:76px;border:1px solid #26313c;background:rgba(5,8,12,.97);box-shadow:0 20px 60px rgba(0,0,0,.35);padding:8px}.public-nav a{font-size:9px;padding:16px 13px}.hero-v2-copy{left:18px;right:18px;bottom:85px}.hero-v2 h1{font-size:clamp(50px,14vw,78px);max-width:650px}.hero-sub{font-size:13px;max-width:500px}.hero-ctas{gap:18px}.hero-caption{display:none}.trust-strip>div{padding:20px 22px}.editorial-intro{padding-top:90px;padding-bottom:90px}.fleet-showcase{padding-bottom:95px}.experience-band{padding-bottom:95px}.why-grid,.process,.faq-section{padding:95px 0}.reservation-section{padding:90px 0 105px}}
 @media(max-width:520px){.public-header{height:66px}.ynr-logo.compact{width:96px;height:40px}.hero-v2-media img{object-position:60% center}.hero-v2-media:after{background:linear-gradient(180deg,rgba(3,5,7,.28),rgba(3,5,7,.78) 62%,rgba(3,5,7,.96) 100%)}.hero-v2-copy{bottom:65px}.hero-v2 h1{font-size:clamp(46px,15vw,66px);margin:15px 0 18px}.hero-sub{font-size:12px}.hero-ctas{flex-direction:column;align-items:flex-start;margin-top:24px}.hero-contact{font-size:10px;gap:10px}.hero-contact span{padding-left:10px}.trust-strip small{line-height:1.45}.section-shell{width:calc(100% - 32px)}.vehicle-feature .vehicle-image-wrap,.vehicle-tile .vehicle-image-wrap{aspect-ratio:1.15/1}.vehicle-meta{padding:18px 18px 22px}.vehicle-meta h3{font-size:22px}.vehicle-meta>strong{font-size:16px}.reservation-section form{padding:20px}.site-footer{padding-top:55px}}
+
+
+/* ===== MOBILE NAV — ROBUST FINAL FIX ===== */
+@media (max-width: 800px){
+  body.menu-open{overflow:hidden}
+  .public-header{position:fixed;z-index:1000;display:flex;align-items:center;justify-content:space-between;height:70px;padding:0 18px;isolation:isolate}
+  .desktop-logo{display:flex;align-items:center;position:relative;z-index:3}
+  .public-header .ynr-logo.compact{width:105px;height:44px}
+  .header-actions{display:none}
+  .mobile-menu{position:relative;z-index:4;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:74px;height:42px;padding:0 12px;margin:0;border:1px solid rgba(255,255,255,.16);border-radius:999px;background:rgba(7,10,14,.88);color:#fff;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;-webkit-tap-highlight-color:transparent}
+  .mobile-menu:active{transform:scale(.98)}
+  .mobile-menu svg{flex:0 0 auto}
+  .mobile-menu-backdrop{position:fixed;z-index:1;inset:70px 0 0;border:0;background:rgba(0,0,0,.58);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);cursor:default}
+  .public-nav{position:absolute;z-index:3;top:calc(100% + 10px);left:14px;right:14px;display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0;padding:7px;background:rgba(7,10,14,.98);border:1px solid rgba(255,255,255,.13);border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateY(-8px) scale(.98);transform-origin:top center;pointer-events:none;transition:opacity .2s ease,transform .2s ease,visibility .2s ease}
+  .public-nav.open{display:flex;opacity:1;visibility:visible;transform:translateY(0) scale(1);pointer-events:auto}
+  .public-nav a{display:flex;align-items:center;min-height:54px;padding:0 15px;border-radius:9px;color:#d9dfe4;font-size:10px;letter-spacing:.15em}
+  .public-nav a:hover,.public-nav a:focus-visible{background:rgba(20,125,255,.10);color:#fff;outline:none}
+}
+@media (max-width:520px){
+  .public-header{height:66px;padding:0 14px}
+  .public-header .ynr-logo.compact{width:96px;height:40px}
+  .mobile-menu-backdrop{inset:66px 0 0}
+  .public-nav{top:calc(100% + 9px);left:10px;right:10px;border-radius:12px}
+  .public-nav a{min-height:52px;padding:0 14px}
+}

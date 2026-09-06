@@ -35,12 +35,19 @@ function Public() {
   const [activeFaq, setActiveFaq] = useState(0)
 
   useEffect(() => { api('/public').then(setData).catch(() => {}) }, [])
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === 'Escape') setMenu(false) }
+    document.addEventListener('keydown', onKey)
+    document.body.classList.toggle('menu-open', menu)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menu])
   const vehicles = data.vehicles || []
   const featured = vehicles[0]
   const others = vehicles.slice(1)
 
   return <div className="site">
     <header className="public-header">
+      {menu && <button className="mobile-menu-backdrop" aria-label="Fermer le menu" onClick={() => setMenu(false)} />}
       <a className="desktop-logo" href="#top"><Logo compact/></a>
       <nav className={`public-nav ${menu ? 'open' : ''}`}>
         <a href="#fleet" onClick={() => setMenu(false)}>La flotte</a>
@@ -51,7 +58,7 @@ function Public() {
       <div className="header-actions">
         <a className="whatsapp-pill" href={WA} target="_blank" rel="noreferrer"><MessageCircle size={15}/> WhatsApp</a>
       </div>
-      <button className="mobile-menu" onClick={() => setMenu(v => !v)} aria-label={menu ? 'Fermer le menu' : 'Ouvrir le menu'}>
+      <button type="button" className="mobile-menu" aria-expanded={menu} onClick={() => setMenu(v => !v)} aria-label={menu ? 'Fermer le menu' : 'Ouvrir le menu'}>
         {menu ? <X size={20}/> : <Menu size={20}/>}<span>Menu</span>
       </button>
     </header>
