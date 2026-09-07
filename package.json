@@ -1,23 +1,22 @@
 {
-  "name": "ynr-pro-rent",
+  "name": "ynr-luxury-rent",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node --env-file-if-exists=.env.local server.js\" \"vite\"",
+    "dev": "concurrently \"node server.js\" \"vite\"",
     "build": "vite build",
-    "preview": "vite preview",
-    "start": "node --env-file-if-exists=.env.local server.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "@vercel/blob": "^2.8.0",
-    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-react": "^6.1.0",
     "bcryptjs": "^3.0.3",
     "concurrently": "^10.0.5",
     "express": "^5.2.1",
-    "lucide-react": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest"
-  }
+    "lucide-react": "^1.33.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "^8.2.2"
+  },
+  "devDependencies": {}
 }
