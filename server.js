@@ -12,23 +12,54 @@ const defaults={settings:{brand:'YNR Luxury Rent',tagline:'Location de véhicule
 let memoryStore=structuredClone(defaults);const clean=(v,max=1000)=>typeof v==='string'?v.trim().slice(0,max):''
 const sessionSecret=String(process.env.SESSION_SECRET||'').trim();const signSession=exp=>{const value=String(exp),sig=crypto.createHmac('sha256',sessionSecret).update(value).digest('hex');return `${value}.${sig}`};const validSession=t=>{const [exp,sig]=String(t||'').split('.'),expected=crypto.createHmac('sha256',sessionSecret).update(exp||'').digest('hex');return Boolean(exp&&sig&&Number(exp)>Date.now()&&sig.length===expected.length&&crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))}
 const STORE_BLOB_PATH='data/store.json'
+const PUBLIC_BLOB_TOKEN=String(process.env.BLOB_READ_WRITE_TOKEN||'').trim()
+const DATA_ENCRYPTION_KEY=crypto.createHash('sha256').update(String(process.env.DATA_ENCRYPTION_KEY||sessionSecret||'ynr-local-dev-key')).digest()
+const blobOptions=(extra={})=>({access:'public',token:PUBLIC_BLOB_TOKEN,...extra})
+const encryptStore=value=>{
+  const iv=crypto.randomBytes(12)
+  const cipher=crypto.createCipheriv('aes-256-gcm',DATA_ENCRYPTION_KEY,iv)
+  const ciphertext=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()])
+  const tag=cipher.getAuthTag()
+  return JSON.stringify({version:1,alg:'aes-256-gcm',iv:iv.toString('base64url'),tag:tag.toString('base64url'),data:ciphertext.toString('base64url')})
+}
+const decryptStore=text=>{
+  const envelope=JSON.parse(text)
+  if(!envelope||envelope.version!==1||envelope.alg!=='aes-256-gcm') throw new Error('Invalid encrypted store')
+  const decipher=crypto.createDecipheriv('aes-256-gcm',DATA_ENCRYPTION_KEY,Buffer.from(envelope.iv,'base64url'))
+  decipher.setAuthTag(Buffer.from(envelope.tag,'base64url'))
+  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(envelope.data,'base64url')),decipher.final()]).toString('utf8'))
+}
 async function read(){
   if(isProd){
+    if(!PUBLIC_BLOB_TOKEN) throw new Error('BLOB_READ_WRITE_TOKEN is missing')
     try{
-      const result=await get(STORE_BLOB_PATH,{access:'private',useCache:false})
-      if(result?.stream){const text=await new Response(result.stream).text();const parsed=JSON.parse(text);memoryStore=structuredClone(parsed);return parsed}
+      const result=await get(STORE_BLOB_PATH,blobOptions({useCache:false}))
+      if(result?.stream){
+        const text=await new Response(result.stream).text()
+        try{
+          const parsed=decryptStore(text)
+          memoryStore=structuredClone(parsed)
+          return parsed
+        }catch(decryptError){
+          // One-time migration from the previous plaintext Blob format.
+          const legacy=JSON.parse(text)
+          if(!legacy || typeof legacy!=='object' || !Array.isArray(legacy.vehicles)) throw decryptError
+          await put(STORE_BLOB_PATH,encryptStore(legacy),blobOptions({allowOverwrite:true,addRandomSuffix:false,contentType:'application/json'}))
+          memoryStore=structuredClone(legacy)
+          return legacy
+        }
+      }
+      throw new Error('Blob response is empty')
     }catch(error){
       if(error?.name==='BlobNotFoundError'){
-        // First production boot: seed the private store from the non-sensitive site defaults.
         const seeded=structuredClone(defaults)
-        await put(STORE_BLOB_PATH,JSON.stringify(seeded,null,2),{access:'private',allowOverwrite:false,addRandomSuffix:false,contentType:'application/json'})
+        await put(STORE_BLOB_PATH,encryptStore(seeded),blobOptions({allowOverwrite:false,addRandomSuffix:false,contentType:'application/json'}))
         memoryStore=structuredClone(seeded)
         return seeded
       }
-      console.error('[YNR] Private Blob store read failed:',error?.message||error)
+      console.error('[YNR] Encrypted Blob store read failed:',error?.message||error)
+      throw new Error('Le stockage des données est indisponible. Vérifiez BLOB_READ_WRITE_TOKEN et le Vercel Blob Store.')
     }
-    // In production, never fall back to a public or in-memory copy of personal data.
-    throw new Error('Le stockage privé des données est indisponible. Connectez un Vercel Blob Store privé au projet.')
   }
   try{return JSON.parse(await fs.readFile(file,'utf8'))}catch{return structuredClone(memoryStore)}
 }
@@ -36,12 +67,13 @@ async function write(v){
   memoryStore=structuredClone(v)
   const serialized=JSON.stringify(v,null,2)
   if(isProd){
+    if(!PUBLIC_BLOB_TOKEN) throw new Error('BLOB_READ_WRITE_TOKEN is missing')
     try{
-      await put(STORE_BLOB_PATH,serialized,{access:'private',allowOverwrite:true,addRandomSuffix:false,contentType:'application/json'})
+      await put(STORE_BLOB_PATH,encryptStore(v),blobOptions({allowOverwrite:true,addRandomSuffix:false,contentType:'application/json'}))
       return
     }catch(error){
-      console.error('[YNR] Persistent private Blob write failed:',error?.message||error)
-      throw new Error('Le stockage privé des données est indisponible. Vérifiez le Vercel Blob Store privé du projet.')
+      console.error('[YNR] Encrypted Blob store write failed:',error?.message||error)
+      throw new Error('Le stockage des données est indisponible. Vérifiez le Vercel Blob Store du projet.')
     }
   }
   await fs.mkdir(dataDir,{recursive:true});const tmp=`${file}.tmp`;await fs.writeFile(tmp,serialized);await fs.rename(tmp,file)
@@ -60,7 +92,7 @@ app.post('/api/uploads',auth,async(req,res)=>{try{
   const blob=await put(name,raw,{access:'public',contentType:match[1],addRandomSuffix:false})
   res.status(201).json({url:blob.url,pathname:blob.pathname,size:raw.length,type:match[1]})
 }catch(error){console.error('[YNR] Blob upload failed',error);res.status(500).json({message:'Le stockage des photos est indisponible. Vérifiez le stockage Vercel Blob du projet.'})}})
-app.delete('/api/uploads',auth,async(req,res)=>{try{const url=clean(req.body?.url,200000);if(!url)return res.status(400).json({message:'URL requise'});await del(url);res.sendStatus(204)}catch(error){console.error('[YNR] Blob delete failed',error);res.status(500).json({message:'Impossible de supprimer la photo du stockage'})}})
+app.delete('/api/uploads',auth,async(req,res)=>{try{const url=clean(req.body?.url,200000);if(!url)return res.status(400).json({message:'URL requise'});await del(url,{token:PUBLIC_BLOB_TOKEN});res.sendStatus(204)}catch(error){console.error('[YNR] Blob delete failed',error);res.status(500).json({message:'Impossible de supprimer la photo du stockage'})}})
 app.get('/api/public',async(req,res)=>{
   res.setHeader('Cache-Control','no-store, max-age=0')
   const s=await read();let vehicles=s.vehicles.filter(v=>v.active)
@@ -93,8 +125,8 @@ app.post('/api/requests',async(req,res)=>{
 app.patch('/api/requests/:id',auth,async(req,res)=>{const s=await read(),r=s.requests.find(x=>x.id===req.params.id);if(!r)return res.sendStatus(404);r.status=['nouvelle','en_cours','traitee'].includes(req.body.status)?req.body.status:r.status;await write(s);res.json(r)})
 app.delete('/api/requests/:id',auth,async(req,res)=>{const s=await read();s.requests=s.requests.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
 app.post('/api/vehicles',auth,async(req,res)=>{const b=req.body||{},s=await read(),now=new Date().toISOString();const photos=Array.isArray(b.photos)?[...new Set(b.photos.filter(x=>typeof x==='string').map(x=>clean(x,200000)).filter(Boolean))].slice(0,8):[];const v={id:crypto.randomUUID(),name:clean(b.name,120),category:clean(b.category,80),price:Math.max(0,Number(b.price)||0),deposit:Math.max(0,Number(b.deposit)||0),description:clean(b.description,1500),photos,active:b.active!==false,createdAt:now,updatedAt:now};if(!v.name)return res.status(400).json({message:'Nom requis'});if(!photos.length)return res.status(400).json({message:'Ajoutez au moins une photo du véhicule'});s.vehicles.unshift(v);await write(s);res.status(201).json(v)})
-app.patch('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),v=s.vehicles.find(x=>x.id===req.params.id);if(!v)return res.sendStatus(404);const oldPhotos=Array.isArray(v.photos)?v.photos:[];const photos=Array.isArray(req.body.photos)?[...new Set(req.body.photos.filter(x=>typeof x==='string').map(x=>clean(x,200000)).filter(Boolean))].slice(0,8):oldPhotos;Object.assign(v,{name:clean(req.body.name,120)||v.name,category:clean(req.body.category,80),price:Math.max(0,Number(req.body.price??v.price)||0),deposit:Math.max(0,Number(req.body.deposit??v.deposit)||0),description:clean(req.body.description,1500),photos,active:req.body.active!==undefined?Boolean(req.body.active):v.active,updatedAt:new Date().toISOString()});if(!v.name)return res.status(400).json({message:'Nom requis'});if(!photos.length)return res.status(400).json({message:'Ajoutez au moins une photo du véhicule'});const removed=oldPhotos.filter(url=>!photos.includes(url));if(removed.length)await Promise.all(removed.map(url=>del(url).catch(()=>null)));await write(s);res.json(v)})
-app.delete('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),vehicle=s.vehicles.find(x=>x.id===req.params.id);if(!vehicle)return res.sendStatus(404);if(vehicle.photos?.length)await Promise.all(vehicle.photos.map(x=>del(x).catch(()=>null)));s.vehicles=s.vehicles.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
+app.patch('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),v=s.vehicles.find(x=>x.id===req.params.id);if(!v)return res.sendStatus(404);const oldPhotos=Array.isArray(v.photos)?v.photos:[];const photos=Array.isArray(req.body.photos)?[...new Set(req.body.photos.filter(x=>typeof x==='string').map(x=>clean(x,200000)).filter(Boolean))].slice(0,8):oldPhotos;Object.assign(v,{name:clean(req.body.name,120)||v.name,category:clean(req.body.category,80),price:Math.max(0,Number(req.body.price??v.price)||0),deposit:Math.max(0,Number(req.body.deposit??v.deposit)||0),description:clean(req.body.description,1500),photos,active:req.body.active!==undefined?Boolean(req.body.active):v.active,updatedAt:new Date().toISOString()});if(!v.name)return res.status(400).json({message:'Nom requis'});if(!photos.length)return res.status(400).json({message:'Ajoutez au moins une photo du véhicule'});const removed=oldPhotos.filter(url=>!photos.includes(url));if(removed.length)await Promise.all(removed.map(url=>del(url,{token:PUBLIC_BLOB_TOKEN}).catch(()=>null)));await write(s);res.json(v)})
+app.delete('/api/vehicles/:id',auth,async(req,res)=>{const s=await read(),vehicle=s.vehicles.find(x=>x.id===req.params.id);if(!vehicle)return res.sendStatus(404);if(vehicle.photos?.length)await Promise.all(vehicle.photos.map(x=>del(x,{token:PUBLIC_BLOB_TOKEN}).catch(()=>null)));s.vehicles=s.vehicles.filter(x=>x.id!==req.params.id);await write(s);res.sendStatus(204)})
 app.put('/api/calendar',auth,async(req,res)=>{const s=await read();s.blocked=Array.isArray(req.body)?req.body.filter(x=>x.vehicleId&&x.start&&x.end).slice(0,500):[];await write(s);res.json(s.blocked)})
 app.put('/api/settings',auth,async(req,res)=>{const s=await read();s.settings={...s.settings,...Object.fromEntries(Object.entries(req.body||{}).map(([k,v])=>[k,clean(v,500)]))};await write(s);res.json(s.settings)})
 app.use((_,res)=>res.sendFile(path.join(root,'dist','index.html')))
