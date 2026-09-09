@@ -43,6 +43,15 @@ const loginAttempts = new Map()
 const requestAttempts = new Map()
 
 function clean(v, max = 1000) { return typeof v === 'string' ? v.trim().slice(0, max) : '' }
+function normalizeStore(value) {
+  const source = value && typeof value === 'object' ? value : {}
+  return {
+    settings: source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings) ? { ...seed.settings, ...source.settings } : structuredClone(seed.settings),
+    vehicles: Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean) : [],
+    requests: Array.isArray(source.requests) ? source.requests.filter(Boolean) : [],
+    blocked: Array.isArray(source.blocked) ? source.blocked.filter(Boolean) : []
+  }
+}
 function sign(exp) { return `${exp}.${crypto.createHmac('sha256', SESSION_SECRET).update(String(exp)).digest('hex')}` }
 function validSession(t) {
   if (!SESSION_SECRET) return false
@@ -94,8 +103,9 @@ async function readStore() {
       const result = await get(STORE_PATH, blobOptions('private', { useCache: false }))
       if (result?.stream) {
         const parsed = JSON.parse(await new Response(result.stream).text())
-        memory = structuredClone(parsed)
-        return parsed
+        const normalized = normalizeStore(parsed)
+        memory = structuredClone(normalized)
+        return normalized
       }
       throw new Error('Blob returned no stream')
     } catch (error) {
@@ -112,16 +122,20 @@ async function readStore() {
     }
   }
   try {
-    memory = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'))
-    return structuredClone(memory)
+    const normalized = normalizeStore(JSON.parse(await fs.readFile(DATA_FILE, 'utf8')))
+    memory = structuredClone(normalized)
+    return normalized
   } catch {
-    return structuredClone(memory)
+    const normalized = normalizeStore(memory)
+    memory = structuredClone(normalized)
+    return normalized
   }
 }
 
 async function writeStore(store) {
-  memory = structuredClone(store)
-  const serialized = JSON.stringify(store, null, 2)
+  const normalized = normalizeStore(store)
+  memory = structuredClone(normalized)
+  const serialized = JSON.stringify(normalized, null, 2)
   if (blobEnabled) {
     try {
       await put(STORE_PATH, serialized, blobOptions('private', {
