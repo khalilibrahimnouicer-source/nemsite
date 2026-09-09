@@ -24,7 +24,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Without a
 // read/write token (or an OIDC token), using Blob makes every public request
 // fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || BLOB_STORE_ID)
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_STORE_ID && BLOB_OIDC_TOKEN))
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -73,11 +73,16 @@ function auth(req, res, next) {
 }
 function blobOptions(access = 'private', extra = {}) {
   const options = { access, ...extra }
-  if (BLOB_STATIC_TOKEN) options.token = BLOB_STATIC_TOKEN
-  else if (BLOB_STORE_ID) options.storeId = BLOB_STORE_ID
-  if (BLOB_OIDC_TOKEN) options.oidcToken = BLOB_OIDC_TOKEN
+
+  if (BLOB_STATIC_TOKEN) {
+    options.token = BLOB_STATIC_TOKEN
+  } else if (BLOB_STORE_ID) {
+    options.storeId = BLOB_STORE_ID
+  }
+
   return options
 }
+
 function mediaUrl(pathname) { return `/api/media?path=${encodeURIComponent(pathname)}` }
 function pathnameFromPhoto(value) {
   const raw = clean(value, 200000)
