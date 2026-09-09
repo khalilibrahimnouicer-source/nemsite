@@ -24,7 +24,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Without a
 // read/write token (or an OIDC token), using Blob makes every public request
 // fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || BLOB_STORE_ID)
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_STORE_ID && BLOB_OIDC_TOKEN))
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
