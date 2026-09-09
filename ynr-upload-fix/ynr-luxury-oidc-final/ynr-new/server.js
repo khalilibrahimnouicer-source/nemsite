@@ -18,13 +18,7 @@ const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
 const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
 const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || '').trim()
-const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
-const RESERVATION_NOTIFY_EMAIL = String(process.env.RESERVATION_NOTIFY_EMAIL || OWNER_EMAIL).trim().toLowerCase()
-const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@resend.dev>').trim()
-// A store ID alone is metadata, not a Blob runtime credential. Without a
-// read/write token (or an OIDC token), using Blob makes every public request
-// fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || BLOB_STORE_ID)
+const blobEnabled = Boolean(BLOB_STORE_ID || BLOB_STATIC_TOKEN)
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -49,15 +43,6 @@ const loginAttempts = new Map()
 const requestAttempts = new Map()
 
 function clean(v, max = 1000) { return typeof v === 'string' ? v.trim().slice(0, max) : '' }
-function normalizeStore(value) {
-  const source = value && typeof value === 'object' ? value : {}
-  return {
-    settings: source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings) ? { ...seed.settings, ...source.settings } : structuredClone(seed.settings),
-    vehicles: Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean) : [],
-    requests: Array.isArray(source.requests) ? source.requests.filter(Boolean) : [],
-    blocked: Array.isArray(source.blocked) ? source.blocked.filter(Boolean) : []
-  }
-}
 function sign(exp) { return `${exp}.${crypto.createHmac('sha256', SESSION_SECRET).update(String(exp)).digest('hex')}` }
 function validSession(t) {
   if (!SESSION_SECRET) return false
@@ -109,9 +94,8 @@ async function readStore() {
       const result = await get(STORE_PATH, blobOptions('private', { useCache: false }))
       if (result?.stream) {
         const parsed = JSON.parse(await new Response(result.stream).text())
-        const normalized = normalizeStore(parsed)
-        memory = structuredClone(normalized)
-        return normalized
+        memory = structuredClone(parsed)
+        return parsed
       }
       throw new Error('Blob returned no stream')
     } catch (error) {
@@ -128,20 +112,16 @@ async function readStore() {
     }
   }
   try {
-    const normalized = normalizeStore(JSON.parse(await fs.readFile(DATA_FILE, 'utf8')))
-    memory = structuredClone(normalized)
-    return normalized
+    memory = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'))
+    return structuredClone(memory)
   } catch {
-    const normalized = normalizeStore(memory)
-    memory = structuredClone(normalized)
-    return normalized
+    return structuredClone(memory)
   }
 }
 
 async function writeStore(store) {
-  const normalized = normalizeStore(store)
-  memory = structuredClone(normalized)
-  const serialized = JSON.stringify(normalized, null, 2)
+  memory = structuredClone(store)
+  const serialized = JSON.stringify(store, null, 2)
   if (blobEnabled) {
     try {
       await put(STORE_PATH, serialized, blobOptions('private', {
@@ -264,21 +244,6 @@ app.delete('/api/uploads', auth, async (req, res) => {
   catch (error) { console.error('[YNR] Blob delete failed:', error?.message || error); res.status(503).json({ message: 'Impossible de supprimer la photo' }) }
 })
 
-async function notifyReservation(request) {
-  if (!RESEND_API_KEY || !RESERVATION_NOTIFY_EMAIL) return { sent: false, reason: 'email-not-configured' }
-  const escapeHtml = value => String(value ?? '').replace(/[&<>\"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[char]))
-  const subject = `Nouvelle demande de réservation — ${request.vehicle}`
-  const html = `<h2>Nouvelle demande de réservation</h2><p><strong>Véhicule :</strong> ${escapeHtml(request.vehicle)}</p><p><strong>Client :</strong> ${escapeHtml(request.name)}<br><strong>Email :</strong> ${escapeHtml(request.email)}<br><strong>Téléphone :</strong> ${escapeHtml(request.phone)}</p><p><strong>Période :</strong> ${escapeHtml(request.start)} → ${escapeHtml(request.end)}</p><p><strong>Message :</strong><br>${escapeHtml(request.message || 'Aucun message')}</p>`
-  try {
-    const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Idempotency-Key': `reservation/${request.id}` }, body: JSON.stringify({ from: RESEND_FROM, to: [RESERVATION_NOTIFY_EMAIL], subject, html }) })
-    if (!response.ok) throw new Error(`Resend ${response.status}`)
-    return { sent: true }
-  } catch (error) {
-    console.error('[YNR] reservation email failed:', error?.message || error)
-    return { sent: false, reason: 'email-failed' }
-  }
-}
-
 app.post('/api/requests', async (req, res) => {
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].slice(0, 100)
   const now = Date.now(), recent = (requestAttempts.get(ip) || []).filter(x => now - x < 900000)
@@ -290,11 +255,9 @@ app.post('/api/requests', async (req, res) => {
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[+0-9 ()\-.]{7,40}$/.test(phone) || !vehicle || !start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end)) || Date.parse(end) < Date.parse(start)) return res.status(400).json({ message: 'Vérifiez les informations saisies.' })
   try {
     const s = await readStore()
-    const reservation = { id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, status: 'nouvelle', createdAt: new Date().toISOString() }
-    s.requests.unshift(reservation)
+    s.requests.unshift({ id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, status: 'nouvelle', createdAt: new Date().toISOString() })
     await writeStore(s)
-    const notification = await notifyReservation(reservation)
-    res.json({ ok: true, notification: notification.sent ? 'sent' : 'not-configured' })
+    res.json({ ok: true })
   } catch (error) { console.error('[YNR] request:', error?.message || error); res.status(503).json({ message: 'Impossible d’enregistrer la demande.' }) }
 })
 
