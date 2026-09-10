@@ -130,6 +130,10 @@ async function readStore() {
       throw new Error('Vercel Blob est configuré mais la lecture du stockage a échoué.')
     }
   }
+  // Vercel Functions have a read-only filesystem. Never reload the bundled
+  // seed file in production after an admin write, otherwise the public page
+  // can hide vehicles that were just added to the warm function instance.
+  if (isProd) return structuredClone(normalizeStore(memory))
   try {
     const normalized = normalizeStore(JSON.parse(await fs.readFile(DATA_FILE, 'utf8')))
     memory = structuredClone(normalized)
