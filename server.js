@@ -18,6 +18,7 @@ const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
 const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
 const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || '').trim()
+const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || '').trim()
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
 const RESERVATION_NOTIFY_EMAIL = String(process.env.RESERVATION_NOTIFY_EMAIL || OWNER_EMAIL).trim().toLowerCase()
 const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@resend.dev>').trim()
