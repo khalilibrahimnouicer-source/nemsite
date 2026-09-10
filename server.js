@@ -17,7 +17,7 @@ const DATA_FILE = path.join(root, 'data', 'store.json')
 const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
 const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
-const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || '').trim()
+const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || process.env.VERCEL_BLOB_TOKEN || '').trim()
 const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || '').trim()
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
 const RESERVATION_NOTIFY_EMAIL = String(process.env.RESERVATION_NOTIFY_EMAIL || OWNER_EMAIL).trim().toLowerCase()
@@ -247,7 +247,7 @@ app.post('/api/uploads', auth, async (req, res) => {
   if (!match) return res.status(400).json({ message: 'Image JPEG, PNG ou WEBP requise' })
   const raw = Buffer.from(match[2], 'base64')
   if (raw.length < 100 || raw.length > 8 * 1024 * 1024) return res.status(413).json({ message: 'Image invalide ou trop volumineuse (8 Mo maximum)' })
-  if (!blobEnabled) return res.status(503).json({ message: 'Vercel Blob n’est pas configuré.' })
+  if (!blobEnabled) return res.status(503).json({ code: 'BLOB_CREDENTIAL_MISSING', message: 'Vercel Blob est connecté mais son token de lecture/écriture n’est pas disponible dans cette Function.' })
   try {
     const ext = match[1].split('/')[1].replace('jpeg', 'jpg')
     const pathname = `vehicles/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`
