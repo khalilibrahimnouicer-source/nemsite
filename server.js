@@ -17,7 +17,7 @@ const DATA_FILE = path.join(root, 'data', 'store.json')
 const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
 const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
-const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || '').trim()
+const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || '').trim()
 const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || '').trim()
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
 const RESERVATION_NOTIFY_EMAIL = String(process.env.RESERVATION_NOTIFY_EMAIL || OWNER_EMAIL).trim().toLowerCase()
@@ -25,7 +25,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Without a
 // read/write token (or an OIDC token), using Blob makes every public request
 // fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_STORE_ID && BLOB_OIDC_TOKEN))
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN)
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -75,11 +75,7 @@ function auth(req, res, next) {
 function blobOptions(access = 'private', extra = {}) {
   const options = { access, ...extra }
 
-  if (BLOB_STATIC_TOKEN) {
-    options.token = BLOB_STATIC_TOKEN
-  } else if (BLOB_STORE_ID) {
-    options.storeId = BLOB_STORE_ID
-  }
+  if (BLOB_STATIC_TOKEN) options.token = BLOB_STATIC_TOKEN
 
   return options
 }
