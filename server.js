@@ -52,9 +52,10 @@ const requestAttempts = new Map()
 function clean(v, max = 1000) { return typeof v === 'string' ? v.trim().slice(0, max) : '' }
 function normalizeStore(value) {
   const source = value && typeof value === 'object' ? value : {}
+  const vehicles = Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean) : []
   return {
     settings: source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings) ? { ...seed.settings, ...source.settings } : structuredClone(seed.settings),
-    vehicles: Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean) : [],
+    vehicles,
     requests: Array.isArray(source.requests) ? source.requests.filter(Boolean) : [],
     blocked: Array.isArray(source.blocked) ? source.blocked.filter(Boolean) : []
   }
@@ -186,20 +187,26 @@ app.get('/api/health', async (_, res) => {
 })
 
 app.get('/api/public', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
+  let s
   try {
-    res.setHeader('Cache-Control', 'no-store, max-age=0')
-    const s = await readStore()
-    let vehicles = s.vehicles.filter(v => v.active)
-    const sort = String(req.query.sort || 'recent')
-    const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
-    if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
-    else if (sort === 'name') vehicles.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }) * dir)
-    else vehicles.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))
-    res.json({ settings: s.settings, vehicles: vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })), blocked: s.blocked })
+    s = await readStore()
   } catch (error) {
-    console.error('[YNR] /api/public:', error?.message || error)
-    res.status(503).json({ message: 'Le catalogue est temporairement indisponible.' })
+    console.error('[YNR] /api/public fallback:', error?.message || error)
+    s = normalizeStore(memory)
   }
+
+  const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
+  let vehicles = sourceVehicles.filter(v => v && v.active !== false)
+  if (!vehicles.length && Array.isArray(seed.vehicles)) vehicles = structuredClone(seed.vehicles)
+
+  const sort = String(req.query.sort || 'recent')
+  const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
+  if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
+  else if (sort === 'name') vehicles.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }) * dir)
+  else vehicles.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))
+
+  res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })), blocked: s.blocked || [] })
 })
 
 app.get('/api/media', async (req, res) => {
