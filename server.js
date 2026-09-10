@@ -247,12 +247,17 @@ app.post('/api/uploads', auth, async (req, res) => {
   if (!match) return res.status(400).json({ message: 'Image JPEG, PNG ou WEBP requise' })
   const raw = Buffer.from(match[2], 'base64')
   if (raw.length < 100 || raw.length > 8 * 1024 * 1024) return res.status(413).json({ message: 'Image invalide ou trop volumineuse (8 Mo maximum)' })
-  if (!blobEnabled) return res.status(503).json({ code: 'BLOB_CREDENTIAL_MISSING', message: 'Vercel Blob est connecté mais son token de lecture/écriture n’est pas disponible dans cette Function.' })
+  if (!blobEnabled) {
+    if (raw.length > 1.5 * 1024 * 1024) return res.status(503).json({ code: 'BLOB_CREDENTIAL_MISSING', message: 'Le stockage Blob n’est pas disponible. Réduisez la photo à 1,5 Mo maximum ou configurez le token Blob.' })
+    // Keep the admin usable when Vercel has only exposed the store metadata.
+    // The data URL is a temporary fallback; Blob remains required for durable production storage.
+    return res.status(201).json({ url: `data:${match[1]};base64,${match[2]}`, size: raw.length, type: match[1], storage: 'memory-fallback' })
+  }
   try {
     const ext = match[1].split('/')[1].replace('jpeg', 'jpg')
     const pathname = `vehicles/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`
     const blob = await put(pathname, raw, blobOptions('private', { addRandomSuffix: false, contentType: match[1] }))
-    res.status(201).json({ pathname: blob.pathname, url: mediaUrl(blob.pathname), size: raw.length, type: match[1] })
+    res.status(201).json({ pathname: blob.pathname, url: mediaUrl(blob.pathname), size: raw.length, type: match[1], storage: 'blob' })
   } catch (error) {
     console.error('[YNR] Blob upload failed:', error?.message || error)
     res.status(503).json({ message: 'Le stockage des photos est indisponible.' })
