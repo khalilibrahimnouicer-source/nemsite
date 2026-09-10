@@ -307,7 +307,7 @@ app.post('/api/requests', async (req, res) => {
 
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
-  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 200000)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 12 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
@@ -322,7 +322,7 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     const s = await readStore(), v = s.vehicles.find(x => x.id === req.params.id)
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
-    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 200000)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, updatedAt: new Date().toISOString() })
+    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 12 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, updatedAt: new Date().toISOString() })
     const removed = oldPhotos.map(pathnameFromPhoto).filter(Boolean).filter(p => !v.photos.map(pathnameFromPhoto).includes(p))
     if (blobEnabled) await Promise.all(removed.map(p => del(p, blobOptions('private')).catch(() => null)))
     await writeStore(s)
