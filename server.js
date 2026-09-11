@@ -208,7 +208,7 @@ app.get('/api/public', async (req, res) => {
   const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
   if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
   else if (sort === 'name') vehicles.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }) * dir)
-  else vehicles.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0))
+  else vehicles.sort((a, b) => (Boolean(b.featured) - Boolean(a.featured)) || (new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0)))
 
   res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })), blocked: s.blocked || [] })
 })
@@ -330,7 +330,7 @@ app.post('/api/requests', async (req, res) => {
 
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
-  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, featured: Boolean(b.featured), createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
