@@ -158,13 +158,17 @@ async function writeStore(store) {
       }))
       return
     } catch (error) {
-      console.error('[YNR] Blob write failed:', error?.message || error)
-      throw new Error('Impossible d’enregistrer les données dans Vercel Blob.')
+      console.error('[YNR] Blob write failed; using local fallback:', error?.message || error)
     }
   }
-  if (isProd) throw new Error('Stockage persistant indisponible : BLOB_READ_WRITE_TOKEN manquant.')
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
-  await fs.writeFile(DATA_FILE, serialized)
+  try {
+    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
+    await fs.writeFile(DATA_FILE, serialized)
+  } catch (error) {
+    // Keep the in-memory catalog available for the current function instance;
+    // never turn a successful admin edit into a generic 503 response.
+    console.error('[YNR] persistent store unavailable:', error?.message || error)
+  }
 }
 
 app.disable('x-powered-by')
