@@ -176,7 +176,7 @@ app.use((_, res, next) => {
   if (isProd) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   next()
 })
-app.use(express.json({ limit: 'Infinity', strict: true }))
+app.use(express.json({ limit: '500mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
@@ -230,14 +230,27 @@ app.get('/api/media', async (req, res) => {
 })
 
 app.post('/api/auth/login', async (req, res) => {
-  if (!SESSION_SECRET || !OWNER_PASSWORD_HASH) return res.status(503).json({ message: 'Authentification administrateur non configurée' })
-  const email = clean(req.body?.email, 180).toLowerCase(), pw = String(req.body?.password || '')
+  const hashLooksValid = /^(\$2[aby]\$\d{2}\$)[./A-Za-z0-9]{53}$/.test(OWNER_PASSWORD_HASH)
+  if (!SESSION_SECRET || !hashLooksValid) {
+    console.error('[YNR] Admin auth is not configured with a valid SESSION_SECRET and bcrypt OWNER_PASSWORD_HASH')
+    return res.status(503).json({ message: 'Authentification administrateur non configurée correctement' })
+  }
+
+  const email = clean(req.body?.email, 180).toLowerCase()
+  const pw = String(req.body?.password || '')
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]
   const key = `${ip}:${email}`
   const a = loginAttempts.get(key) || { count: 0, at: Date.now() }
   if (Date.now() - a.at > 900000) { a.count = 0; a.at = Date.now() }
   if (a.count >= 8) return res.status(429).json({ message: 'Trop de tentatives. Réessayez plus tard.' })
-  const ok = email === OWNER_EMAIL && await bcrypt.compare(pw, OWNER_PASSWORD_HASH)
+
+  let ok = false
+  try {
+    ok = email === OWNER_EMAIL && pw.length > 0 && await bcrypt.compare(pw, OWNER_PASSWORD_HASH)
+  } catch (error) {
+    console.error('[YNR] Admin password verification failed:', error?.message || error)
+    return res.status(503).json({ message: 'Authentification administrateur indisponible' })
+  }
   if (!ok) { a.count++; loginAttempts.set(key, a); return res.status(401).json({ message: 'Identifiants invalides' }) }
   loginAttempts.delete(key)
   const secure = isProd ? ' Secure;' : ''
