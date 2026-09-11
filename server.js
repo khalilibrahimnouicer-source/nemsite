@@ -25,7 +25,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Without a
 // read/write token (or an OIDC token), using Blob makes every public request
 // fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN)
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN || BLOB_STORE_ID)
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -75,9 +75,11 @@ function auth(req, res, next) {
 }
 function blobOptions(access = 'private', extra = {}) {
   const options = { access, ...extra }
-
   if (BLOB_STATIC_TOKEN) options.token = BLOB_STATIC_TOKEN
-
+  else if (BLOB_OIDC_TOKEN && BLOB_STORE_ID) {
+    options.oidcToken = BLOB_OIDC_TOKEN
+    options.storeId = BLOB_STORE_ID
+  }
   return options
 }
 
@@ -160,10 +162,9 @@ async function writeStore(store) {
       throw new Error('Impossible d’enregistrer les données dans Vercel Blob.')
     }
   }
-  if (!isProd) {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
-    await fs.writeFile(DATA_FILE, serialized)
-  }
+  if (isProd) throw new Error('Stockage persistant indisponible : BLOB_READ_WRITE_TOKEN manquant.')
+  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
+  await fs.writeFile(DATA_FILE, serialized)
 }
 
 app.disable('x-powered-by')
@@ -345,12 +346,24 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     const s = await readStore(), v = s.vehicles.find(x => x.id === req.params.id)
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
-    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, updatedAt: new Date().toISOString() })
+    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), updatedAt: new Date().toISOString() })
     const removed = oldPhotos.map(pathnameFromPhoto).filter(Boolean).filter(p => !v.photos.map(pathnameFromPhoto).includes(p))
     if (blobEnabled) await Promise.all(removed.map(p => del(p, blobOptions('private')).catch(() => null)))
     await writeStore(s)
     res.json({ ...v, photos: publicPhotos(v.photos) })
   } catch (error) { console.error('[YNR] vehicle patch:', error?.message || error); res.status(503).json({ message: 'Impossible de modifier le véhicule.' }) }
+})
+app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
+  try {
+    const s = await readStore(), selected = s.vehicles.find(x => x.id === req.params.id)
+    if (!selected) return res.status(404).json({ message: 'Véhicule introuvable' })
+    s.vehicles = s.vehicles.map(vehicle => ({ ...vehicle, featured: vehicle.id === selected.id, updatedAt: new Date().toISOString() }))
+    await writeStore(s)
+    res.json(s.vehicles.map(vehicle => ({ ...vehicle, photos: publicPhotos(vehicle.photos) })))
+  } catch (error) {
+    console.error('[YNR] featured vehicle update:', error?.message || error)
+    res.status(503).json({ message: 'Impossible de définir le véhicule principal.' })
+  }
 })
 app.delete('/api/vehicles/:id', auth, async (req, res) => {
   try {
