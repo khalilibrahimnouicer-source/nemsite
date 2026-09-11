@@ -176,7 +176,7 @@ app.use((_, res, next) => {
   if (isProd) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   next()
 })
-app.use(express.json({ limit: '12mb', strict: true }))
+app.use(express.json({ limit: 'Infinity', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
@@ -257,9 +257,8 @@ app.post('/api/uploads', auth, async (req, res) => {
   const match = data.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
   if (!match) return res.status(400).json({ message: 'Image JPEG, PNG ou WEBP requise' })
   const raw = Buffer.from(match[2], 'base64')
-  if (raw.length < 100 || raw.length > 8 * 1024 * 1024) return res.status(413).json({ message: 'Image invalide ou trop volumineuse (8 Mo maximum)' })
+  if (raw.length < 100) return res.status(400).json({ message: 'Image invalide' })
   if (!blobEnabled) {
-    if (raw.length > 1.5 * 1024 * 1024) return res.status(503).json({ code: 'BLOB_CREDENTIAL_MISSING', message: 'Le stockage Blob n’est pas disponible. Réduisez la photo à 1,5 Mo maximum ou configurez le token Blob.' })
     // Keep the admin usable when Vercel has only exposed the store metadata.
     // The data URL is a temporary fallback; Blob remains required for durable production storage.
     return res.status(201).json({ url: `data:${match[1]};base64,${match[2]}`, size: raw.length, type: match[1], storage: 'memory-fallback' })
@@ -318,7 +317,7 @@ app.post('/api/requests', async (req, res) => {
 
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
-  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 12 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
@@ -333,7 +332,7 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     const s = await readStore(), v = s.vehicles.find(x => x.id === req.params.id)
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
-    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 12 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, updatedAt: new Date().toISOString() })
+    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, updatedAt: new Date().toISOString() })
     const removed = oldPhotos.map(pathnameFromPhoto).filter(Boolean).filter(p => !v.photos.map(pathnameFromPhoto).includes(p))
     if (blobEnabled) await Promise.all(removed.map(p => del(p, blobOptions('private')).catch(() => null)))
     await writeStore(s)
