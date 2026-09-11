@@ -22,10 +22,10 @@ const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || ''
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
 const RESERVATION_NOTIFY_EMAIL = String(process.env.RESERVATION_NOTIFY_EMAIL || OWNER_EMAIL).trim().toLowerCase()
 const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@resend.dev>').trim()
-// A store ID alone is metadata, not a Blob runtime credential. Without a
-// read/write token (or an OIDC token), using Blob makes every public request
-// fail with 503 instead of allowing the catalog fallback to render.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || BLOB_STORE_ID)
+// A store ID alone is metadata, not a Blob runtime credential. Only enable
+// Blob calls when the function can actually authenticate to the store; this
+// keeps login and the admin readable when Vercel has not injected a token.
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_OIDC_TOKEN && BLOB_STORE_ID))
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -264,7 +264,17 @@ app.post('/api/auth/logout', auth, (_, res) => {
   res.status(204).end()
 })
 app.get('/api/auth/session', auth, (_, res) => res.json({ ok: true }))
-app.get('/api/admin', auth, async (_, res) => { try { res.setHeader('Cache-Control', 'no-store'); res.json(await readStore()) } catch (e) { console.error('[YNR] /api/admin:', e?.message || e); res.status(503).json({ message: 'Administration temporairement indisponible.' }) } })
+app.get('/api/admin', auth, async (_, res) => {
+  res.setHeader('Cache-Control', 'no-store')
+  try {
+    return res.json(await readStore())
+  } catch (error) {
+    // Keep the authenticated dashboard usable when Blob is temporarily
+    // unavailable; writes still fail explicitly instead of being lost.
+    console.error('[YNR] /api/admin storage fallback:', error?.message || error)
+    return res.json(normalizeStore(memory))
+  }
+})
 
 app.post('/api/uploads', auth, async (req, res) => {
   const data = String(req.body?.data || '')
