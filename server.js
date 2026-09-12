@@ -249,8 +249,8 @@ app.get('/api/media', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const hashLooksValid = /^(\$2[aby]\$\d{2}\$)[./A-Za-z0-9]{53}$/.test(OWNER_PASSWORD_HASH)
-  if (!SESSION_SECRET || !hashLooksValid) {
-    console.error('[YNR] Admin auth is not configured with a valid SESSION_SECRET and bcrypt OWNER_PASSWORD_HASH')
+  if (!SESSION_SECRET || !OWNER_EMAIL || !hashLooksValid) {
+    console.error('[YNR] Admin auth is not configured with valid SESSION_SECRET, OWNER_EMAIL and bcrypt OWNER_PASSWORD_HASH')
     return res.status(503).json({ message: 'Authentification administrateur non configurée correctement' })
   }
 
@@ -271,13 +271,13 @@ app.post('/api/auth/login', async (req, res) => {
   }
   if (!ok) { a.count++; loginAttempts.set(key, a); return res.status(401).json({ message: 'Identifiants invalides' }) }
   loginAttempts.delete(key)
-  const secure = isProd ? ' Secure;' : ''
-  res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=Strict;${secure} Path=/; Max-Age=86400`)
+  const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
+  res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=Lax;${secure} Path=/; Max-Age=86400`)
   res.json({ ok: true })
 })
 app.post('/api/auth/logout', auth, (_, res) => {
-  const secure = isProd ? ' Secure;' : ''
-  res.setHeader('Set-Cookie', `ynr_session=; HttpOnly; SameSite=Strict;${secure} Path=/; Max-Age=0`)
+  const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
+  res.setHeader('Set-Cookie', `ynr_session=; HttpOnly; SameSite=Lax;${secure} Path=/; Max-Age=0`)
   res.status(204).end()
 })
 app.get('/api/auth/session', auth, (_, res) => res.json({ ok: true }))
