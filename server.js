@@ -121,12 +121,12 @@ async function readStore() {
       throw new Error('Blob returned no stream')
     } catch (error) {
       if (isBlobNotFound(error)) {
-        const seeded = structuredClone(seed)
-        await put(STORE_PATH, JSON.stringify(seeded, null, 2), blobOptions('private', {
+        const existing = normalizeStore(memory)
+        await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
           allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
         }))
-        memory = structuredClone(seeded)
-        return seeded
+        memory = structuredClone(existing)
+        return existing
       }
       console.error('[YNR] Blob read failed:', error?.message || error)
       throw new Error('Vercel Blob est configuré mais la lecture du stockage a échoué.')
@@ -185,7 +185,7 @@ app.use(express.json({ limit: '500mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
-  if (!blobEnabled) return res.json({ ok: true, storage: isProd ? 'local-fallback' : 'local', blobConfigured: false })
+  if (!blobEnabled) return res.json({ ok: true, storage: isProd ? 'memory-fallback' : 'local', blobConfigured: false, persistentStorageRequired: isProd })
   try {
     await readStore()
     res.json({ ok: true, storage: 'blob', blobConfigured: true, oidc: Boolean(BLOB_STORE_ID && !BLOB_STATIC_TOKEN) })
@@ -207,8 +207,6 @@ app.get('/api/public', async (req, res) => {
 
   const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
   let vehicles = sourceVehicles.filter(v => v && v.active !== false)
-  if (!vehicles.length && Array.isArray(seed.vehicles)) vehicles = structuredClone(seed.vehicles)
-
   const sort = String(req.query.sort || 'recent')
   const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
   if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
