@@ -427,4 +427,7 @@ if (isProd && !SESSION_SECRET) console.error('[YNR] SESSION_SECRET is missing in
 if (isProd && !OWNER_PASSWORD_HASH) console.error('[YNR] OWNER_PASSWORD_HASH is missing in production.')
 if (isProd && !blobEnabled) console.error('[YNR] BLOB_READ_WRITE_TOKEN is missing in production.')
 if (!process.env.VERCEL) app.listen(PORT, () => console.log(`[YNR] http://localhost:${PORT}`))
+
 export default app
+
+
