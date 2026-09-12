@@ -343,9 +343,25 @@ app.post('/api/requests', async (req, res) => {
   } catch (error) { console.error('[YNR] request:', error?.message || error); res.status(503).json({ message: 'Impossible d’enregistrer la demande.' }) }
 })
 
+function normalizePricing(value, basePrice = 0) {
+  const source = value && typeof value === 'object' ? value : {}
+  const price = Math.max(0, Number(basePrice) || 0)
+  const discount = Math.min(100, Math.max(0, Number(source.discount) || 0))
+  const finalPrice = amount => Math.round(Math.max(0, Number(amount) || 0) * (1 - discount / 100))
+  return {
+    weekday24h: Math.max(0, Number(source.weekday24h ?? price) || 0),
+    weekend48h: Math.max(0, Number(source.weekend48h ?? price * 2) || 0),
+    weekend72h: Math.max(0, Number(source.weekend72h ?? price * 3) || 0),
+    week7d: Math.max(0, Number(source.week7d ?? price * 7) || 0),
+    month30d: Math.max(0, Number(source.month30d ?? price * 30) || 0),
+    discount,
+    display: finalPrice(Number(source.weekday24h ?? price))
+  }
+}
+
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
-  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, featured: Boolean(b.featured), createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, pricing: normalizePricing(b.pricing, Number(b.price) || 0), description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, featured: Boolean(b.featured), createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
@@ -360,7 +376,7 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     const s = await readStore(), v = s.vehicles.find(x => x.id === req.params.id)
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
-    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), updatedAt: new Date().toISOString() })
+    Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, pricing: normalizePricing(req.body.pricing ?? v.pricing, Number(req.body.price ?? v.price) || 0), description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), updatedAt: new Date().toISOString() })
     const removed = oldPhotos.map(pathnameFromPhoto).filter(Boolean).filter(p => !v.photos.map(pathnameFromPhoto).includes(p))
     if (blobEnabled) await Promise.all(removed.map(p => del(p, blobOptions('private')).catch(() => null)))
     await writeStore(s)
