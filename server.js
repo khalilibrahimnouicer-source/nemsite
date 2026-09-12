@@ -195,6 +195,19 @@ app.get('/api/health', async (_, res) => {
   }
 })
 
+app.get('/api/vehicles/:id', async (req, res) => {
+  try {
+    const store = await readStore()
+    const requestedId = String(req.params.id || '')
+    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false)
+    if (!vehicle) return res.status(404).json({ message: 'Véhicule introuvable' })
+    return res.json({ ...vehicle, photos: publicPhotos(vehicle.photos) })
+  } catch (error) {
+    console.error('[YNR] product vehicle:', error?.message || error)
+    return res.status(503).json({ message: 'Fiche véhicule temporairement indisponible.' })
+  }
+})
+
 app.get('/api/public', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0')
   let s
