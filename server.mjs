@@ -16,7 +16,6 @@ const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim()
 const DATA_FILE = path.join(root, 'data', 'store.json')
 const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
-const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
 const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || process.env.VERCEL_BLOB_TOKEN || '').trim()
 const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || '').trim()
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
@@ -25,7 +24,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Only enable
 // Blob calls when the function can actually authenticate to the store; this
 // keeps login and the admin readable when Vercel has not injected a token.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_OIDC_TOKEN && BLOB_STORE_ID))
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN)
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -45,7 +44,15 @@ const seed = {
   requests: [], blocked: []
 }
 
-let memory = structuredClone(seed)
+function loadBundledStore() {
+  try {
+    return normalizeStore(JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')))
+  } catch {
+    return normalizeStore(seed)
+  }
+}
+
+let memory = loadBundledStore()
 const loginAttempts = new Map()
 const requestAttempts = new Map()
 
@@ -76,10 +83,6 @@ function auth(req, res, next) {
 function blobOptions(access = 'private', extra = {}) {
   const options = { access, ...extra }
   if (BLOB_STATIC_TOKEN) options.token = BLOB_STATIC_TOKEN
-  else if (BLOB_OIDC_TOKEN && BLOB_STORE_ID) {
-    options.oidcToken = BLOB_OIDC_TOKEN
-    options.storeId = BLOB_STORE_ID
-  }
   return options
 }
 
@@ -132,10 +135,7 @@ async function readStore() {
       throw new Error('Vercel Blob est configuré mais la lecture du stockage a échoué.')
     }
   }
-  // Vercel Functions have a read-only filesystem. Never reload the bundled
-  // seed file in production after an admin write, otherwise the public page
-  // can hide vehicles that were just added to the warm function instance.
-  if (isProd) return structuredClone(normalizeStore(memory))
+  if (isProd) throw new Error('Le stockage Blob persistant n’est pas configuré.')
   try {
     const normalized = normalizeStore(JSON.parse(await fs.readFile(DATA_FILE, 'utf8')))
     memory = structuredClone(normalized)
@@ -185,13 +185,26 @@ app.use(express.json({ limit: '500mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
-  if (!blobEnabled) return res.json({ ok: true, storage: isProd ? 'memory-fallback' : 'local', blobConfigured: false, persistentStorageRequired: isProd })
+  if (!blobEnabled) {
+    const payload = { ok: !isProd, storage: isProd ? 'unavailable' : 'local', blobConfigured: false, persistentStorageRequired: isProd }
+    return res.status(isProd ? 503 : 200).json(payload)
+  }
   try {
     await readStore()
-    res.json({ ok: true, storage: 'blob', blobConfigured: true, credential: BLOB_STATIC_TOKEN ? 'BLOB_READ_WRITE_TOKEN' : 'VERCEL_OIDC_TOKEN' })
+    res.json({ ok: true, storage: 'blob', blobConfigured: true, credential: 'BLOB_READ_WRITE_TOKEN', persistent: true })
   } catch (error) {
     console.error('[YNR] health:', error?.message || error)
     res.status(503).json({ ok: false, storage: 'blob', blobConfigured: true, message: 'Vercel Blob est connecté mais inaccessible depuis la Function.' })
+  }
+})
+
+app.get('/api/vehicles', async (_, res) => {
+  try {
+    const store = await readStore()
+    res.json(publicStore(store))
+  } catch (error) {
+    console.error('[YNR] vehicles list:', error?.message || error)
+    res.status(503).json({ message: 'Le catalogue persistant est temporairement indisponible.' })
   }
 })
 
