@@ -153,8 +153,9 @@ async function writeStore(store) {
       }))
       return
     } catch (error) {
-    console.error('[YNR] Blob write failed:', error?.message || error)
-    if (isProd) throw new Error('Le stockage Blob est inaccessible. La modification n’a pas été enregistrée.')
+      console.error('[YNR] Blob write failed:', error?.message || error)
+      if (isProd) throw new Error('Le stockage Blob est inaccessible. La modification n’a pas été enregistrée.')
+    }
   }
   try {
     await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
@@ -162,14 +163,6 @@ async function writeStore(store) {
   } catch (error) {
     console.error('[YNR] persistent store unavailable:', error?.message || error)
     if (isProd) throw new Error('Aucun stockage persistant disponible en production.')
-  }
-  try {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
-    await fs.writeFile(DATA_FILE, serialized)
-  } catch (error) {
-    // Keep the in-memory catalog available for the current function instance;
-    // never turn a successful admin edit into a generic 503 response.
-    console.error('[YNR] persistent store unavailable:', error?.message || error)
   }
 }
 
@@ -429,5 +422,3 @@ if (isProd && !blobEnabled) console.error('[YNR] BLOB_READ_WRITE_TOKEN is missin
 if (!process.env.VERCEL) app.listen(PORT, () => console.log(`[YNR] http://localhost:${PORT}`))
 
 export default app
-
-
