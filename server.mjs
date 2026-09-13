@@ -250,21 +250,24 @@ app.get('/api/public', async (req, res) => {
 })
 
 app.get('/api/media', async (req, res) => {
-  let pathname = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
-  if (typeof pathname !== 'string' || !pathname.trim()) {
-    const rawUrl = String(req.originalUrl || req.url || '')
-    const queryIndex = rawUrl.indexOf('?')
-    if (queryIndex >= 0) pathname = new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path') || ''
+  const rawUrl = String(req.originalUrl || req.url || '')
+  const queryIndex = rawUrl.indexOf('?')
+  const queryPath = queryIndex >= 0 ? new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path') : ''
+  const requestPath = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
+  const candidates = [requestPath, queryPath].filter((value) => typeof value === 'string' && value.trim())
+  let pathname = ''
+  for (const candidate of candidates) {
+    try {
+      const decoded = decodeURIComponent(candidate.trim()).replace(/^\/+/, '')
+      if (decoded.startsWith('vehicles/') && !decoded.includes('..') && !decoded.includes('//')) {
+        pathname = decoded
+        break
+      }
+    } catch {
+      continue
+    }
   }
-  pathname = typeof pathname === 'string' ? pathname.trim() : ''
-  try {
-    pathname = decodeURIComponent(pathname)
-  } catch {
-    return res.status(400).send('Invalid media path')
-  }
-  pathname = pathname.replace(/^\/+/, '')
-  const isVehicleMedia = pathname.startsWith('vehicles/') && pathname.length > 'vehicles/'.length
-  if (!isVehicleMedia || pathname.includes('..') || pathname.includes('//') || /[\u0000-\u001f]/.test(pathname)) return res.status(400).send('Invalid media path')
+  if (!pathname || /[\u0000-\u001f]/.test(pathname)) return res.status(400).send('Invalid media path')
   try {
     const result = await get(pathname, blobOptions('private', { useCache: false }))
     if (!result?.stream) return res.sendStatus(404)
