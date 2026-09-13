@@ -250,15 +250,20 @@ app.get('/api/public', async (req, res) => {
 })
 
 app.get('/api/media', async (req, res) => {
-  const rawUrl = String(req.originalUrl || req.url || '')
-  const queryIndex = rawUrl.indexOf('?')
-  const queryPath = queryIndex >= 0 ? new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path') : ''
+  const rawUrls = [req.originalUrl, req.url].filter((value) => typeof value === 'string')
   const requestPath = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
-  const candidates = [requestPath, queryPath].filter((value) => typeof value === 'string' && value.trim())
+  const candidates = [requestPath]
+  for (const rawUrl of rawUrls) {
+    const queryIndex = rawUrl.indexOf('?')
+    if (queryIndex >= 0) candidates.push(new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path'))
+  }
   let pathname = ''
   for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue
     try {
-      const decoded = decodeURIComponent(candidate.trim()).replace(/^\/+/, '')
+      let decoded = candidate.trim()
+      for (let pass = 0; pass < 3 && /%[0-9a-f]{2}/i.test(decoded); pass += 1) decoded = decodeURIComponent(decoded)
+      decoded = decoded.replace(/^\/+/, '')
       if (decoded.startsWith('vehicles/') && !decoded.includes('..') && !decoded.includes('//')) {
         pathname = decoded
         break
