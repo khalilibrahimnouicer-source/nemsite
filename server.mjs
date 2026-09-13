@@ -122,7 +122,12 @@ async function readStore() {
         memory = structuredClone(normalized)
         return normalized
       }
-      throw new Error('Blob returned no stream')
+      const existing = normalizeStore(memory)
+      await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
+        allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
+      }))
+      memory = structuredClone(existing)
+      return existing
     } catch (error) {
       if (isBlobNotFound(error)) {
         const existing = normalizeStore(memory)
