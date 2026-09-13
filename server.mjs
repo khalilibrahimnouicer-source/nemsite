@@ -1,6 +1,7 @@
 import express from 'express'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
@@ -46,7 +47,7 @@ const seed = {
 
 function loadBundledStore() {
   try {
-    return normalizeStore(JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')))
+    return normalizeStore(JSON.parse(fsSync.readFileSync(DATA_FILE, 'utf8')))
   } catch {
     return normalizeStore(seed)
   }
@@ -299,10 +300,8 @@ app.get('/api/admin', auth, async (_, res) => {
   try {
     return res.json(await readStore())
   } catch (error) {
-    // Keep the authenticated dashboard usable when Blob is temporarily
-    // unavailable; writes still fail explicitly instead of being lost.
-    console.error('[YNR] /api/admin storage fallback:', error?.message || error)
-    return res.json(normalizeStore(memory))
+    console.error('[YNR] /api/admin storage unavailable:', error?.message || error)
+    return res.status(503).json({ message: 'Le stockage persistant est indisponible. Aucune donnée locale ne sera utilisée.' })
   }
 })
 
@@ -313,9 +312,7 @@ app.post('/api/uploads', auth, async (req, res) => {
   const raw = Buffer.from(match[2], 'base64')
   if (raw.length < 100) return res.status(400).json({ message: 'Image invalide' })
   if (!blobEnabled) {
-    // Keep the admin usable when Vercel has only exposed the store metadata.
-    // The data URL is a temporary fallback; Blob remains required for durable production storage.
-    return res.status(201).json({ url: `data:${match[1]};base64,${match[2]}`, size: raw.length, type: match[1], storage: 'memory-fallback' })
+    return res.status(503).json({ message: 'Le stockage Blob n’est pas configuré. La photo n’a pas été enregistrée.' })
   }
   try {
     const ext = match[1].split('/')[1].replace('jpeg', 'jpg')
@@ -324,9 +321,7 @@ app.post('/api/uploads', auth, async (req, res) => {
     res.status(201).json({ pathname: blob.pathname, url: mediaUrl(blob.pathname), size: raw.length, type: match[1], storage: 'blob' })
   } catch (error) {
     console.error('[YNR] Blob upload failed:', error?.message || error)
-    // Keep the current admin operation usable when Blob credentials are stale or
-    // temporarily unavailable. The vehicle save still reports the storage mode.
-    res.status(201).json({ url: `data:${match[1]};base64,${match[2]}`, size: raw.length, type: match[1], storage: 'memory-fallback', warning: 'Photo non persistée dans Blob' })
+    res.status(503).json({ message: 'Le stockage Blob est inaccessible. La photo n’a pas été enregistrée.' })
   }
 })
 
