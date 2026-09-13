@@ -10,28 +10,6 @@
   },
   "vehicles": [
     {
-      "id": "49897c55-fd56-418e-969b-e3ba71bb7bfb",
-      "name": "Test vehicle",
-      "category": "Véhicule premium",
-      "price": 100,
-      "deposit": 0,
-      "pricing": {
-        "weekday24h": 100,
-        "weekend48h": 200,
-        "weekend72h": 300,
-        "week7d": 700,
-        "month30d": 3000,
-        "discount": 0,
-        "display": 100
-      },
-      "description": "",
-      "photos": [],
-      "active": true,
-      "featured": false,
-      "createdAt": "2026-09-13T15:14:36.005Z",
-      "updatedAt": "2026-09-13T15:14:36.005Z"
-    },
-    {
       "id": "demo-bmw-m3",
       "name": "BMW M3 Competition",
       "category": "Berline sportive",
