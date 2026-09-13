@@ -249,15 +249,15 @@ app.get('/api/public', async (req, res) => {
 })
 
 app.get('/api/media', async (req, res) => {
-  let pathname = clean(req.query.path, 500)
+  let pathname = Array.isArray(req.query.path) ? req.query.path[0] : req.query.path
+  pathname = typeof pathname === 'string' ? pathname.trim() : ''
   try {
-    pathname = decodeURIComponent(pathname)
-    if (pathname.includes('%')) pathname = decodeURIComponent(pathname)
+    for (let i = 0; i < 3 && /%[0-9A-Fa-f]{2}/.test(pathname); i += 1) pathname = decodeURIComponent(pathname)
   } catch {
     return res.status(400).send('Invalid media path')
   }
   pathname = pathname.replace(/^\/+/, '')
-  if (!pathname || !pathname.startsWith('vehicles/') || pathname.includes('..') || pathname.includes('//')) return res.status(400).send('Invalid media path')
+  if (!/^vehicles\/[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(pathname) || pathname.includes('..') || pathname.includes('//')) return res.status(400).send('Invalid media path')
   try {
     const result = await get(pathname, blobOptions('private', { useCache: false }))
     if (!result?.stream) return res.sendStatus(404)
