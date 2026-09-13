@@ -250,7 +250,12 @@ app.get('/api/public', async (req, res) => {
 })
 
 app.get('/api/media', async (req, res) => {
-  let pathname = Array.isArray(req.query.path) ? req.query.path[0] : req.query.path
+  let pathname = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
+  if (typeof pathname !== 'string' || !pathname.trim()) {
+    const rawUrl = String(req.originalUrl || req.url || '')
+    const queryIndex = rawUrl.indexOf('?')
+    if (queryIndex >= 0) pathname = new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path') || ''
+  }
   pathname = typeof pathname === 'string' ? pathname.trim() : ''
   try {
     pathname = decodeURIComponent(pathname)
