@@ -187,7 +187,7 @@ app.use((_, res, next) => {
   if (isProd) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   next()
 })
-app.use(express.json({ limit: '500mb', strict: true }))
+app.use(express.json({ limit: '12mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
@@ -316,6 +316,7 @@ app.post('/api/uploads', auth, async (req, res) => {
   if (!match) return res.status(400).json({ message: 'Image JPEG, PNG ou WEBP requise' })
   const raw = Buffer.from(match[2], 'base64')
   if (raw.length < 100) return res.status(400).json({ message: 'Image invalide' })
+  if (raw.length > 8 * 1024 * 1024) return res.status(413).json({ message: 'Image trop volumineuse. Choisissez une image de moins de 8 Mo.' })
   if (!blobEnabled) {
     return res.status(503).json({ message: 'Le stockage Blob n’est pas configuré. La photo n’a pas été enregistrée.' })
   }
@@ -326,7 +327,8 @@ app.post('/api/uploads', auth, async (req, res) => {
     res.status(201).json({ pathname: blob.pathname, url: mediaUrl(blob.pathname), size: raw.length, type: match[1], storage: 'blob' })
   } catch (error) {
     console.error('[YNR] Blob upload failed:', error?.message || error)
-    res.status(503).json({ message: 'Le stockage Blob est inaccessible. La photo n’a pas été enregistrée.' })
+    const detail = error?.message ? ` (${String(error.message).slice(0, 160)})` : ''
+    res.status(503).json({ message: `Le stockage Blob est inaccessible. La photo n’a pas été enregistrée.${detail}` })
   }
 })
 
