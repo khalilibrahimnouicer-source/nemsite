@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
+import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import { put, del, get } from '@vercel/blob'
@@ -252,18 +253,19 @@ app.get('/api/media', async (req, res) => {
   let pathname = Array.isArray(req.query.path) ? req.query.path[0] : req.query.path
   pathname = typeof pathname === 'string' ? pathname.trim() : ''
   try {
-    for (let i = 0; i < 3 && /%[0-9A-Fa-f]{2}/.test(pathname); i += 1) pathname = decodeURIComponent(pathname)
+    pathname = decodeURIComponent(pathname)
   } catch {
     return res.status(400).send('Invalid media path')
   }
   pathname = pathname.replace(/^\/+/, '')
-  if (!/^vehicles\/[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(pathname) || pathname.includes('..') || pathname.includes('//')) return res.status(400).send('Invalid media path')
+  const isVehicleMedia = pathname.startsWith('vehicles/') && pathname.length > 'vehicles/'.length
+  if (!isVehicleMedia || pathname.includes('..') || pathname.includes('//') || /[\u0000-\u001f]/.test(pathname)) return res.status(400).send('Invalid media path')
   try {
     const result = await get(pathname, blobOptions('private', { useCache: false }))
     if (!result?.stream) return res.sendStatus(404)
     res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=3600')
     res.setHeader('Content-Type', result.blob?.contentType || 'application/octet-stream')
-    result.stream.pipe(res)
+    Readable.fromWeb(result.stream).pipe(res)
   } catch (error) {
     if (isBlobNotFound(error)) return res.sendStatus(404)
     console.error('[YNR] media read failed:', error?.message || error)
