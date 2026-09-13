@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"node server.js\" \"vite\"",
+    "dev": "concurrently \"node server.mjs\" \"vite\"",
     "build": "vite build",
-    "start": "node server.js"
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.1.0",
