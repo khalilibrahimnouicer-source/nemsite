@@ -265,12 +265,14 @@ app.post('/api/auth/login', async (req, res) => {
   if (!ok) { a.count++; loginAttempts.set(key, a); return res.status(401).json({ message: 'Identifiants invalides' }) }
   loginAttempts.delete(key)
   const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
-  res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=Lax;${secure} Path=/; Max-Age=86400`)
+  const sameSite = secure ? 'None' : 'Lax'
+  res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=${sameSite};${secure} Path=/; Max-Age=86400`)
   res.json({ ok: true })
 })
-app.post('/api/auth/logout', auth, (_, res) => {
+app.post('/api/auth/logout', auth, (req, res) => {
   const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
-  res.setHeader('Set-Cookie', `ynr_session=; HttpOnly; SameSite=Lax;${secure} Path=/; Max-Age=0`)
+  const sameSite = secure ? 'None' : 'Lax'
+  res.setHeader('Set-Cookie', `ynr_session=; HttpOnly; SameSite=${sameSite};${secure} Path=/; Max-Age=0`)
   res.status(204).end()
 })
 app.get('/api/auth/session', auth, (_, res) => res.json({ ok: true }))
@@ -304,7 +306,9 @@ app.post('/api/uploads', auth, async (req, res) => {
     res.status(201).json({ pathname: blob.pathname, url: mediaUrl(blob.pathname), size: raw.length, type: match[1], storage: 'blob' })
   } catch (error) {
     console.error('[YNR] Blob upload failed:', error?.message || error)
-    res.status(503).json({ message: 'Le stockage des photos est indisponible.' })
+    // Keep the current admin operation usable when Blob credentials are stale or
+    // temporarily unavailable. The vehicle save still reports the storage mode.
+    res.status(201).json({ url: `data:${match[1]};base64,${match[2]}`, size: raw.length, type: match[1], storage: 'memory-fallback', warning: 'Photo non persistée dans Blob' })
   }
 })
 
