@@ -1,1 +1,58 @@
-{"settings":{"brand":"YNR Luxury","tagline":"Location de véhicules premium.","phone":"07 46 38 99 31","email":"ynr.location@gmail.com","whatsapp":"https://wa.me/33746389931","instagram":"https://instagram.com/ynr_location"},"vehicles":[{"id":"demo-bmw-m3","name":"BMW M3 Competition","category":"Berline sportive","price":490,"deposit":3000,"pricing":{"weekday24h":490,"weekend48h":900,"weekend72h":1250,"week7d":2800,"month30d":8500,"discount":0},"description":"Une sportive précise et spectaculaire, pensée pour les déplacements professionnels comme les escapades.","photos":["https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1800&q=85"],"active":true,"createdAt":"2026-09-07T12:00:00.000Z"}],"requests":[],"blocked":[]}
+{
+  "settings": {
+    "brand": "YNR Luxury",
+    "tagline": "Location de véhicules premium.",
+    "phone": "07 46 38 99 31",
+    "email": "ynr.location@gmail.com",
+    "whatsapp": "https://wa.me/33746389931",
+    "whatsappChannel": "https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE",
+    "instagram": "https://instagram.com/ynr_location"
+  },
+  "vehicles": [
+    {
+      "id": "49897c55-fd56-418e-969b-e3ba71bb7bfb",
+      "name": "Test vehicle",
+      "category": "Véhicule premium",
+      "price": 100,
+      "deposit": 0,
+      "pricing": {
+        "weekday24h": 100,
+        "weekend48h": 200,
+        "weekend72h": 300,
+        "week7d": 700,
+        "month30d": 3000,
+        "discount": 0,
+        "display": 100
+      },
+      "description": "",
+      "photos": [],
+      "active": true,
+      "featured": false,
+      "createdAt": "2026-09-13T15:14:36.005Z",
+      "updatedAt": "2026-09-13T15:14:36.005Z"
+    },
+    {
+      "id": "demo-bmw-m3",
+      "name": "BMW M3 Competition",
+      "category": "Berline sportive",
+      "price": 490,
+      "deposit": 3000,
+      "pricing": {
+        "weekday24h": 490,
+        "weekend48h": 900,
+        "weekend72h": 1250,
+        "week7d": 2800,
+        "month30d": 8500,
+        "discount": 0
+      },
+      "description": "Une sportive précise et spectaculaire, pensée pour les déplacements professionnels comme les escapades.",
+      "photos": [
+        "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1800&q=85"
+      ],
+      "active": true,
+      "createdAt": "2026-09-07T12:00:00.000Z"
+    }
+  ],
+  "requests": [],
+  "blocked": []
+}

@@ -16,6 +16,7 @@ const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim()
 const DATA_FILE = path.join(root, 'data', 'store.json')
 const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
+const BLOB_OIDC_TOKEN = String(process.env.VERCEL_OIDC_TOKEN || '').trim()
 const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || process.env.VERCEL_BLOB_TOKEN || '').trim()
 const BLOB_WEBHOOK_PUBLIC_KEY = String(process.env.BLOB_WEBHOOK_PUBLIC_KEY || '').trim()
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim()
@@ -24,7 +25,7 @@ const RESEND_FROM = String(process.env.RESEND_FROM || 'YNR Luxury <onboarding@re
 // A store ID alone is metadata, not a Blob runtime credential. Only enable
 // Blob calls when the function can actually authenticate to the store; this
 // keeps login and the admin readable when Vercel has not injected a token.
-const blobEnabled = Boolean(BLOB_STATIC_TOKEN)
+const blobEnabled = Boolean(BLOB_STATIC_TOKEN || (BLOB_OIDC_TOKEN && BLOB_STORE_ID))
 const PHONE = '07 46 38 99 31'
 const WHATSAPP = 'https://wa.me/33746389931'
 const COMMUNITY = 'https://chat.whatsapp.com/DDUWaSzXm4DBuA8co2I0bE'
@@ -75,6 +76,10 @@ function auth(req, res, next) {
 function blobOptions(access = 'private', extra = {}) {
   const options = { access, ...extra }
   if (BLOB_STATIC_TOKEN) options.token = BLOB_STATIC_TOKEN
+  else if (BLOB_OIDC_TOKEN && BLOB_STORE_ID) {
+    options.oidcToken = BLOB_OIDC_TOKEN
+    options.storeId = BLOB_STORE_ID
+  }
   return options
 }
 
@@ -183,7 +188,7 @@ app.get('/api/health', async (_, res) => {
   if (!blobEnabled) return res.json({ ok: true, storage: isProd ? 'memory-fallback' : 'local', blobConfigured: false, persistentStorageRequired: isProd })
   try {
     await readStore()
-    res.json({ ok: true, storage: 'blob', blobConfigured: true, credential: 'BLOB_READ_WRITE_TOKEN' })
+    res.json({ ok: true, storage: 'blob', blobConfigured: true, credential: BLOB_STATIC_TOKEN ? 'BLOB_READ_WRITE_TOKEN' : 'VERCEL_OIDC_TOKEN' })
   } catch (error) {
     console.error('[YNR] health:', error?.message || error)
     res.status(503).json({ ok: false, storage: 'blob', blobConfigured: true, message: 'Vercel Blob est connecté mais inaccessible depuis la Function.' })
