@@ -88,7 +88,7 @@ function blobOptions(access = 'private', extra = {}) {
   return options
 }
 
-function mediaUrl(pathname) { return `/api/media?path=${encodeURIComponent(pathname)}` }
+function mediaUrl(pathname) { return `/api/media/${pathname.split('/').map(encodeURIComponent).join('/')}` }
 function pathnameFromPhoto(value) {
   const raw = clean(value, 200000)
   if (!raw) return null
@@ -249,10 +249,12 @@ app.get('/api/public', async (req, res) => {
   res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })), blocked: s.blocked || [] })
 })
 
-app.get('/api/media', async (req, res) => {
+async function serveMedia(req, res) {
   const rawUrls = [req.originalUrl, req.url, req.headers?.['x-original-url']].filter((value) => typeof value === 'string')
   const requestPath = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
-  const candidates = [requestPath]
+  const wildcardValue = req.params?.splat || req.params?.path || req.params?.[0]
+  const wildcardPath = Array.isArray(wildcardValue) ? wildcardValue.join('/') : wildcardValue
+  const candidates = [requestPath, wildcardPath]
   for (const rawUrl of rawUrls) {
     const queryIndex = rawUrl.indexOf('?')
     if (queryIndex >= 0) {
@@ -289,7 +291,10 @@ app.get('/api/media', async (req, res) => {
     console.error('[YNR] media read failed:', error?.message || error)
     res.sendStatus(503)
   }
-})
+}
+
+app.get('/api/media', serveMedia)
+app.get('/api/media/*splat', serveMedia)
 
 app.post('/api/auth/login', async (req, res) => {
   const hashLooksValid = /^(\$2[aby]\$\d{2}\$)[./A-Za-z0-9]{53}$/.test(OWNER_PASSWORD_HASH)
