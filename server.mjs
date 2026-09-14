@@ -250,12 +250,17 @@ app.get('/api/public', async (req, res) => {
 })
 
 app.get('/api/media', async (req, res) => {
-  const rawUrls = [req.originalUrl, req.url].filter((value) => typeof value === 'string')
+  const rawUrls = [req.originalUrl, req.url, req.headers?.['x-original-url']].filter((value) => typeof value === 'string')
   const requestPath = Array.isArray(req.query?.path) ? req.query.path[0] : req.query?.path
   const candidates = [requestPath]
   for (const rawUrl of rawUrls) {
     const queryIndex = rawUrl.indexOf('?')
-    if (queryIndex >= 0) candidates.push(new URLSearchParams(rawUrl.slice(queryIndex + 1)).get('path'))
+    if (queryIndex >= 0) {
+      const rawQuery = rawUrl.slice(queryIndex + 1)
+      candidates.push(new URLSearchParams(rawQuery).get('path'))
+      const match = rawQuery.match(/(?:^|&)path=([^&]*)/)
+      if (match) candidates.push(match[1])
+    }
   }
   let pathname = ''
   for (const candidate of candidates) {
