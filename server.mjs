@@ -188,7 +188,7 @@ app.use((_, res, next) => {
   if (isProd) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
   next()
 })
-app.use(express.json({ limit: '12mb', strict: true }))
+app.use(express.json({ limit: '28mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
@@ -332,6 +332,14 @@ app.post('/api/auth/logout', auth, (req, res) => {
   res.status(204).end()
 })
 app.get('/api/auth/session', auth, (_, res) => res.json({ ok: true }))
+app.get('/api/request-document/:requestId/:type', auth, async (req, res) => {
+  try {
+    const store = await readStore(); const request = store.requests.find(item => item.id === req.params.requestId); const document = request?.documents?.[req.params.type]
+    if (!document?.pathname || !['identity', 'license', 'address'].includes(req.params.type)) return res.sendStatus(404)
+    const result = await get(document.pathname, blobOptions('private', { useCache: false })); if (!result?.stream) return res.sendStatus(404)
+    res.setHeader('Content-Type', document.contentType || 'application/octet-stream'); res.setHeader('Content-Disposition', 'inline'); Readable.fromWeb(result.stream).pipe(res)
+  } catch (error) { console.error('[YNR] request document:', error?.message || error); res.sendStatus(404) }
+})
 app.get('/api/admin', auth, async (_, res) => {
   res.setHeader('Cache-Control', 'no-store')
   try {
@@ -394,10 +402,25 @@ app.post('/api/requests', async (req, res) => {
   const b = req.body || {}
   if (clean(b.website, 50)) return res.status(400).json({ message: 'Demande invalide' })
   const name = clean(b.name, 100), email = clean(b.email, 254).toLowerCase(), phone = clean(b.phone, 40), vehicleId = clean(b.vehicleId, 100), vehicle = clean(b.vehicle, 150), start = clean(b.start, 20), end = clean(b.end, 20), message = clean(b.message, 2000)
+  const requiredDocs = ['identity', 'license', 'address']
+  const documents = {}
+  for (const type of requiredDocs) {
+    const data = String(b.documents?.[type]?.data || '')
+    const match = data.match(/^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/)
+    if (!match) return res.status(400).json({ message: 'Ajoutez les trois justificatifs demandés.' })
+    const raw = Buffer.from(match[2], 'base64')
+    if (raw.length < 100 || raw.length > 8 * 1024 * 1024) return res.status(400).json({ message: 'Chaque justificatif doit faire moins de 8 Mo.' })
+    if (!blobEnabled) return res.status(503).json({ message: 'Le stockage sécurisé est temporairement indisponible.' })
+    const encryptedName = crypto.createHash('sha256').update(`${type}:${crypto.randomUUID()}`).digest('hex')
+    const extension = match[1] === 'application/pdf' ? 'pdf' : 'jpg'
+    const pathname = `reservations/${new Date().toISOString().slice(0, 10)}/${encryptedName}.${extension}`
+    const blob = await put(pathname, raw, blobOptions('private', { addRandomSuffix: false, contentType: match[1] }))
+    documents[type] = { pathname: blob.pathname, label: type, contentType: match[1], uploadedAt: new Date().toISOString() }
+  }
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[+0-9 ()\-.]{7,40}$/.test(phone) || !vehicle || !start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end)) || Date.parse(end) < Date.parse(start)) return res.status(400).json({ message: 'Vérifiez les informations saisies.' })
   try {
     const s = await readStore()
-    const reservation = { id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, status: 'nouvelle', createdAt: new Date().toISOString() }
+    const reservation = { id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, documents, status: 'nouvelle', createdAt: new Date().toISOString() }
     s.requests.unshift(reservation)
     await writeStore(s)
     const notification = await notifyReservation(reservation)
