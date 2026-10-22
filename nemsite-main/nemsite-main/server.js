@@ -104,6 +104,9 @@ function publicStore(store) {
 function isBlobNotFound(error) { return error?.name === 'BlobNotFoundError' || /not found/i.test(String(error?.message || '')) }
 
 async function readStore() {
+  if (isProd && !blobEnabled) {
+    throw new Error('Vercel Blob est requis en production, mais aucun jeton d’accès valide n’est configuré.')
+  }
   if (blobEnabled) {
     try {
       const result = await get(STORE_PATH, blobOptions('private', { useCache: false }))
@@ -116,12 +119,8 @@ async function readStore() {
       throw new Error('Blob returned no stream')
     } catch (error) {
       if (isBlobNotFound(error)) {
-        const seeded = structuredClone(seed)
-        await put(STORE_PATH, JSON.stringify(seeded, null, 2), blobOptions('private', {
-          allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
-        }))
-        memory = structuredClone(seeded)
-        return seeded
+        // Never initialize production storage from demo data when the real store is missing.
+        throw new Error('Le fichier de données Vercel Blob est introuvable. Aucune donnée n’a été créée ni remplacée.')
       }
       console.error('[YNR] Blob read failed:', error?.message || error)
       throw new Error('Vercel Blob est configuré mais la lecture du stockage a échoué.')
@@ -139,6 +138,9 @@ async function readStore() {
 }
 
 async function writeStore(store) {
+  if (isProd && !blobEnabled) {
+    throw new Error('Enregistrement refusé : Vercel Blob n’est pas configuré en production.')
+  }
   const normalized = normalizeStore(store)
   memory = structuredClone(normalized)
   const serialized = JSON.stringify(normalized, null, 2)
@@ -173,7 +175,10 @@ app.use(express.json({ limit: '12mb', strict: true }))
 app.use(express.static(path.join(root, 'dist')))
 
 app.get('/api/health', async (_, res) => {
-  if (!blobEnabled) return res.json({ ok: true, storage: isProd ? 'local-fallback' : 'local', blobConfigured: false })
+  if (!blobEnabled) {
+    if (isProd) return res.status(503).json({ ok: false, storage: 'blob', blobConfigured: false, message: 'Vercel Blob est requis en production mais aucun accès n’est configuré.' })
+    return res.json({ ok: true, storage: 'local', blobConfigured: false })
+  }
   try {
     await readStore()
     res.json({ ok: true, storage: 'blob', blobConfigured: true, oidc: Boolean(BLOB_STORE_ID && !BLOB_STATIC_TOKEN) })
