@@ -305,7 +305,7 @@ app.post('/api/requests', async (req, res) => {
 
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
-  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 200000)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, showPrice: b.showPrice !== false, showDeposit: b.showDeposit !== false, description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 200000)).filter(Boolean))].slice(0, 8) : [], active: b.active !== false, createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
