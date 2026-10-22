@@ -131,6 +131,9 @@ async function readStore() {
       return existing
     } catch (error) {
       if (isBlobNotFound(error)) {
+        // Never create the production catalog from the bundled demo store. A
+        // missing Blob object must be surfaced so real data cannot be masked.
+        if (isProd) throw new Error('Le fichier catalogue Vercel Blob est introuvable.')
         const existing = normalizeStore(memory)
         await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
           allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
@@ -234,8 +237,8 @@ app.get('/api/public', async (req, res) => {
   try {
     s = await readStore()
   } catch (error) {
-    console.error('[YNR] /api/public fallback:', error?.message || error)
-    s = normalizeStore(memory)
+    console.error('[YNR] /api/public storage unavailable:', error?.message || error)
+    return res.status(503).json({ message: 'Le catalogue persistant est temporairement indisponible.' })
   }
 
   const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
