@@ -34,3 +34,11 @@
 /* Center footer copy while preserving YNR black background and existing typography */
 .public .footer-social-intro{width:100%;margin-inline:auto;text-align:center}
 .public .footer-social-intro .eyebrow,.public .footer-social-intro h2,.public .footer-social-intro>p:last-child{text-align:center;margin-left:auto;margin-right:auto}
+
+/* Final footer adjustment: solid black and inherit the site's typography */
+.public footer#footer{background:#080a0e!important}
+.public .footer-social-intro h2{font-family:inherit!important}
+.public .footer-social-intro h2 i{font-family:inherit!important;font-style:normal!important}
+.public .footer-social-intro>p:last-child{font-family:inherit!important;font-style:normal!important}
+.public .footer-social-intro{max-width:680px;text-align:center}
+.public .footer-social-intro .eyebrow,.public .footer-social-intro h2,.public .footer-social-intro>p:last-child{text-align:center}
