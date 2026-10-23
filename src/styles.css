@@ -42,3 +42,9 @@
 .public .footer-social-intro>p:last-child{font-family:inherit!important;font-style:normal!important}
 .public .footer-social-intro{max-width:680px;text-align:center}
 .public .footer-social-intro .eyebrow,.public .footer-social-intro h2,.public .footer-social-intro>p:last-child{text-align:center}
+
+/* Fix footer heading and description alignment within the full page width */
+.public footer#footer .footer-social-intro{width:100%;max-width:680px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center}
+.public footer#footer .footer-social-intro>*{width:100%;text-align:center}
+.public footer#footer .footer-social-intro h2{display:block;margin-inline:auto;text-align:center}
+.public footer#footer .footer-social-intro>p:last-child{max-width:560px;margin-inline:auto;text-align:center}
