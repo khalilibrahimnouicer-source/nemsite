@@ -30,3 +30,7 @@
 .public .social-logo img{filter:drop-shadow(0 0 8px rgba(21,121,255,.18))}
 .public .social-arrow{color:#1579ff}
 .public .footer-social-intro>p:last-child{color:#a0a9b7}
+
+/* Center footer copy while preserving YNR black background and existing typography */
+.public .footer-social-intro{width:100%;margin-inline:auto;text-align:center}
+.public .footer-social-intro .eyebrow,.public .footer-social-intro h2,.public .footer-social-intro>p:last-child{text-align:center;margin-left:auto;margin-right:auto}
