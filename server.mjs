@@ -195,7 +195,7 @@ app.use((_, res, next) => {
 app.use(express.json({ limit: '28mb', strict: true }))
 
 // Dynamic sitemap: include the homepage and every active vehicle detail page.
-app.get('/sitemap.xml', async (_, res) => {
+app.get('/api/sitemap.xml', async (_, res) => {
   const base = 'https://www.ynr-location.com'
   const xmlEscape = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
   const entries = [{ loc: base + '/', priority: '1.0', changefreq: 'weekly' }]
@@ -526,7 +526,7 @@ app.delete('/api/requests/:id', auth, async (req, res) => { try { const s = awai
 
 // Server-render SEO metadata for each vehicle URL so crawlers and social previews
 // receive a unique title, description, canonical URL and structured data without JS.
-app.get('/vehicle/:id', async (req, res, next) => {
+app.get('/api/seo-vehicle/:id', async (req, res, next) => {
   try {
     const requestedId = String(req.params.id || '')
     if (!requestedId || requestedId.length > 200) return res.status(404).send('Véhicule introuvable')
