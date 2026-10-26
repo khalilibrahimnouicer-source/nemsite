@@ -535,9 +535,9 @@ app.get('/api/seo-vehicle/:id', async (req, res, next) => {
     if (!vehicle) return res.status(404).send('Véhicule introuvable')
     const htmlEscape = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
     const plainText = value => String(value ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-    const title = `${plainText(vehicle.name).slice(0, 120)} | Location de voiture premium — YNR Location`
+    const title = `${plainText(vehicle.name).slice(0, 90)} | YNR Location — YNR Luxury`
     const vehicleDetails = plainText(vehicle.description || 'Consultez les tarifs et demandez votre réservation directement auprès de notre équipe.')
-    const description = `Location de ${plainText(vehicle.name)} avec YNR Location en Île-de-France. ${vehicleDetails}`.slice(0, 160)
+    const description = `Location de ${plainText(vehicle.name)} avec YNR Location — YNR Luxury en Île-de-France. ${vehicleDetails}`.slice(0, 160)
     const canonical = 'https://www.ynr-location.com/vehicle/' + encodeURIComponent(requestedId)
     const rawImage = vehicle.featuredPhoto || (Array.isArray(vehicle.photos) ? vehicle.photos[0] : '') || '/ynr-luxury-new.jpg'
     const image = /^https?:\/\//i.test(rawImage) ? rawImage : 'https://www.ynr-location.com' + (rawImage.startsWith('/') ? rawImage : '/' + rawImage)
@@ -551,7 +551,7 @@ app.get('/api/seo-vehicle/:id', async (req, res, next) => {
       image,
       brand: { '@type': 'Brand', name: 'YNR Location' },
       category: plainText(vehicle.category || 'Véhicule premium'),
-      ...(Number.isFinite(price) && price > 0 ? { offers: { '@type': 'Offer', url: canonical, price: String(price), priceCurrency: 'EUR', seller: { '@type': 'AutoRental', name: 'YNR Location', url: 'https://www.ynr-location.com/' } } } : {})
+      ...(Number.isFinite(price) && price > 0 ? { offers: { '@type': 'Offer', url: canonical, price: String(price), priceCurrency: 'EUR', seller: { '@type': 'AutoRental', name: 'YNR Location — YNR Luxury', url: 'https://www.ynr-location.com/' } } } : {})
     }
     let document = await fs.readFile(path.join(root, 'dist', 'index.html'), 'utf8')
     document = document.replace(/<title>[^<]*<\/title>/i, `<title>${htmlEscape(title)}</title>`)
