@@ -193,7 +193,33 @@ app.use((_, res, next) => {
   next()
 })
 app.use(express.json({ limit: '28mb', strict: true }))
-app.use(express.static(path.join(root, 'dist')))
+
+// Dynamic sitemap: include the homepage and every active vehicle detail page.
+app.get('/sitemap.xml', async (_, res) => {
+  const base = 'https://www.ynr-location.com'
+  const xmlEscape = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+  const entries = [{ loc: base + '/', priority: '1.0', changefreq: 'weekly' }]
+  try {
+    const store = await readStore()
+    for (const vehicle of store.vehicles) {
+      if (!vehicle || vehicle.active === false || vehicle.id == null || !String(vehicle.id).trim()) continue
+      const entry = {
+        loc: base + '/vehicle/' + encodeURIComponent(String(vehicle.id)),
+        priority: '0.8',
+        changefreq: 'weekly',
+        lastmod: [vehicle.updatedAt, vehicle.createdAt].find(value => value && !Number.isNaN(Date.parse(value)))
+      }
+      entries.push(entry)
+    }
+  } catch (error) {
+    console.error('[YNR] sitemap vehicle list unavailable:', error?.message || error)
+  }
+  const urls = entries.map(entry => `  <url>\n    <loc>${xmlEscape(entry.loc)}</loc>${entry.lastmod ? `\n    <lastmod>${new Date(entry.lastmod).toISOString()}</lastmod>` : ''}\n    <changefreq>${entry.changefreq}</changefreq>\n    <priority>${entry.priority}</priority>\n  </url>`).join('\n')
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8')
+  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400')
+  res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`)
+})
+app.use(express.static(path.join(root, 'dist')) )
 
 app.get('/api/health', async (_, res) => {
   if (!blobEnabled) {
