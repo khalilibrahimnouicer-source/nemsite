@@ -524,6 +524,54 @@ app.put('/api/settings', auth, async (req, res) => { try { const s = await readS
 app.patch('/api/requests/:id', auth, async (req, res) => { try { const s = await readStore(), r = s.requests.find(x => x.id === req.params.id); if (!r) return res.status(404).json({ message: 'Demande introuvable' }); r.status = clean(req.body?.status, 30); await writeStore(s); res.json(r) } catch { res.status(503).json({ message: 'Impossible de mettre à jour la demande.' }) } })
 app.delete('/api/requests/:id', auth, async (req, res) => { try { const s = await readStore(); s.requests = s.requests.filter(x => x.id !== req.params.id); await writeStore(s); res.sendStatus(204) } catch { res.status(503).json({ message: 'Impossible de supprimer la demande.' }) } })
 
+// Server-render SEO metadata for each vehicle URL so crawlers and social previews
+// receive a unique title, description, canonical URL and structured data without JS.
+app.get('/vehicle/:id', async (req, res, next) => {
+  try {
+    const requestedId = String(req.params.id || '')
+    if (!requestedId || requestedId.length > 200) return res.status(404).send('Véhicule introuvable')
+    const store = await readStore()
+    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false)
+    if (!vehicle) return res.status(404).send('Véhicule introuvable')
+    const htmlEscape = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    const plainText = value => String(value ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    const title = `${plainText(vehicle.name).slice(0, 120)} | Location de voiture premium — YNR Location`
+    const description = plainText(vehicle.description || `Découvrez ${vehicle.name} chez YNR Location. Consultez les tarifs et demandez votre réservation en Île-de-France.`).slice(0, 300)
+    const canonical = 'https://www.ynr-location.com/vehicle/' + encodeURIComponent(requestedId)
+    const rawImage = vehicle.featuredPhoto || (Array.isArray(vehicle.photos) ? vehicle.photos[0] : '') || '/ynr-luxury-new.jpg'
+    const image = /^https?:\/\//i.test(rawImage) ? rawImage : 'https://www.ynr-location.com' + (rawImage.startsWith('/') ? rawImage : '/' + rawImage)
+    const price = Number(vehicle.pricing?.weekday24h ?? vehicle.price)
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Vehicle',
+      name: plainText(vehicle.name),
+      description,
+      url: canonical,
+      image,
+      brand: { '@type': 'Brand', name: 'YNR Location' },
+      category: plainText(vehicle.category || 'Véhicule premium'),
+      ...(Number.isFinite(price) && price > 0 ? { offers: { '@type': 'Offer', url: canonical, price: String(price), priceCurrency: 'EUR', availability: 'https://schema.org/InStock', seller: { '@type': 'AutoRental', name: 'YNR Location', url: 'https://www.ynr-location.com/' } } } : {})
+    }
+    let document = await fs.readFile(path.join(root, 'dist', 'index.html'), 'utf8')
+    document = document.replace(/<title>[^<]*<\/title>/i, `<title>${htmlEscape(title)}</title>`)
+    document = document.replace(/<meta name="description" content="[^"]*"\s*\/>/i, `<meta name="description" content="${htmlEscape(description)}"/>`)
+    document = document.replace(/<link rel="canonical" href="[^"]*"\s*\/>/i, `<link rel="canonical" href="${htmlEscape(canonical)}"/>`)
+    document = document.replace(/<meta property="og:title" content="[^"]*"\s*\/>/i, `<meta property="og:title" content="${htmlEscape(title)}"/>`)
+    document = document.replace(/<meta property="og:description" content="[^"]*"\s*\/>/i, `<meta property="og:description" content="${htmlEscape(description)}"/>`)
+    document = document.replace(/<meta property="og:url" content="[^"]*"\s*\/>/i, `<meta property="og:url" content="${htmlEscape(canonical)}"/>`)
+    document = document.replace(/<meta property="og:image" content="[^"]*"\s*\/>/i, `<meta property="og:image" content="${htmlEscape(image)}"/>`)
+    document = document.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/i, `<meta name="twitter:title" content="${htmlEscape(title)}"/>`)
+    document = document.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/i, `<meta name="twitter:description" content="${htmlEscape(description)}"/>`)
+    document = document.replace(/<meta name="twitter:image" content="[^"]*"\s*\/>/i, `<meta name="twitter:image" content="${htmlEscape(image)}"/>`)
+    document = document.replace('</head>', `<script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script>\n</head>`)
+    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600')
+    res.type('html').status(200).send(document)
+  } catch (error) {
+    console.error('[YNR] vehicle SEO rendering failed:', error?.message || error)
+    next(error)
+  }
+})
+
 app.use((req, res, next) => { if (req.path.startsWith('/api/')) return next(); if (req.method === 'GET') return res.sendFile(path.join(root, 'dist', 'index.html')); next() })
 if (isProd && !SESSION_SECRET) console.error('[YNR] SESSION_SECRET is missing in production.')
 if (isProd && !OWNER_PASSWORD_HASH) console.error('[YNR] OWNER_PASSWORD_HASH is missing in production.')
