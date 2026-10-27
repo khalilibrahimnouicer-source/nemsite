@@ -2,4 +2,8 @@ User-agent: *
 Allow: /
 Disallow: /admin
 
+User-agent: BraveBot
+Allow: /
+Disallow: /admin
+
 Sitemap: https://www.ynr-location.com/sitemap.xml
