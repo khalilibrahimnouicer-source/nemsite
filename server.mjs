@@ -335,33 +335,36 @@ app.get('/api/media', serveMedia)
 app.get('/api/media/*splat', serveMedia)
 
 app.post('/api/auth/login', async (req, res) => {
-  const hashLooksValid = /^(\$2[aby]\$\d{2}\$)[./A-Za-z0-9]{53}$/.test(OWNER_PASSWORD_HASH)
-  if (!SESSION_SECRET || !OWNER_EMAIL || !hashLooksValid) {
-    console.error('[YNR] Admin auth is not configured with valid SESSION_SECRET, OWNER_EMAIL and bcrypt OWNER_PASSWORD_HASH')
-    return res.status(503).json({ message: 'Authentification administrateur non configurée correctement' })
-  }
-
-  const email = clean(req.body?.email, 180).toLowerCase()
-  const pw = String(req.body?.password || '')
-  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]
-  const key = `${ip}:${email}`
-  const a = loginAttempts.get(key) || { count: 0, at: Date.now() }
-  if (Date.now() - a.at > 900000) { a.count = 0; a.at = Date.now() }
-  if (a.count >= 8) return res.status(429).json({ message: 'Trop de tentatives. Réessayez plus tard.' })
-
-  let ok = false
   try {
-    ok = email === OWNER_EMAIL && pw.length > 0 && await bcrypt.compare(pw, OWNER_PASSWORD_HASH)
+    const hashLooksValid = /^(\$2[aby]\$\d{2}\$)[./A-Za-z0-9]{53}$/.test(OWNER_PASSWORD_HASH)
+    if (!SESSION_SECRET || !OWNER_EMAIL || !hashLooksValid) {
+      console.error('[YNR] Admin auth configuration invalid:', JSON.stringify({
+        hasSessionSecret: Boolean(SESSION_SECRET),
+        hasOwnerEmail: Boolean(OWNER_EMAIL),
+        validPasswordHash: hashLooksValid
+      }))
+      return res.status(503).json({ message: 'Connexion indisponible : configuration administrateur incomplète. Contactez le propriétaire du site.' })
+    }
+
+    const email = clean(req.body?.email, 180).toLowerCase()
+    const pw = String(req.body?.password || '')
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]
+    const key = `${ip}:${email}`
+    const a = loginAttempts.get(key) || { count: 0, at: Date.now() }
+    if (Date.now() - a.at > 900000) { a.count = 0; a.at = Date.now() }
+    if (a.count >= 8) return res.status(429).json({ message: 'Trop de tentatives. Réessayez plus tard.' })
+
+    const ok = email === OWNER_EMAIL && pw.length > 0 && await bcrypt.compare(pw, OWNER_PASSWORD_HASH)
+    if (!ok) { a.count++; loginAttempts.set(key, a); return res.status(401).json({ message: 'Identifiants invalides' }) }
+    loginAttempts.delete(key)
+    const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
+    const sameSite = secure ? 'None' : 'Lax'
+    res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=${sameSite};${secure} Path=/; Max-Age=86400`)
+    return res.json({ ok: true })
   } catch (error) {
-    console.error('[YNR] Admin password verification failed:', error?.message || error)
-    return res.status(503).json({ message: 'Authentification administrateur indisponible' })
+    console.error('[YNR] Admin login failed unexpectedly:', error?.message || error)
+    if (!res.headersSent) return res.status(503).json({ message: 'Le service de connexion est temporairement indisponible. Réessayez dans un instant.' })
   }
-  if (!ok) { a.count++; loginAttempts.set(key, a); return res.status(401).json({ message: 'Identifiants invalides' }) }
-  loginAttempts.delete(key)
-  const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''
-  const sameSite = secure ? 'None' : 'Lax'
-  res.setHeader('Set-Cookie', `ynr_session=${sign(Date.now() + 86400000)}; HttpOnly; SameSite=${sameSite};${secure} Path=/; Max-Age=86400`)
-  res.json({ ok: true })
 })
 app.post('/api/auth/logout', auth, (req, res) => {
   const secure = isProd || req.secure || req.headers['x-forwarded-proto'] === 'https' ? ' Secure;' : ''

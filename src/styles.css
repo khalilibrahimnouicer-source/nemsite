@@ -51,3 +51,5 @@
 
 /* Core Web Vitals: avoid offscreen work and respect reduced-motion preferences */
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+.password-field{position:relative;display:flex;align-items:center;width:100%}.login-card .password-field input{width:100%;padding-right:48px}.password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#66717c}.password-toggle:hover{background:#e7eaed;color:#11151a}.password-toggle:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
