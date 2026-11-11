@@ -107,7 +107,7 @@ function pathnameFromPhoto(value) {
       if (pathname.startsWith('vehicles/') && !pathname.includes('..') && !pathname.includes('//')) return pathname
     }
     if (u.hostname.endsWith('.private.blob.vercel-storage.com')) {
-      const pathname = decodeURIComponent(u.pathname.replace(/^\\//, ''))
+      const pathname = decodeURIComponent(u.pathname.replace(/^\/+/, ''))
       if (pathname.startsWith('vehicles/') && !pathname.includes('..') && !pathname.includes('//')) return pathname
     }
   } catch {}
