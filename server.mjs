@@ -491,7 +491,8 @@ app.post('/api/vehicles', auth, async (req, res) => {
     const i = s.vehicles.findIndex(x => x.id === v.id)
     const previousPhotos = i >= 0 && Array.isArray(s.vehicles[i].photos) ? s.vehicles[i].photos : []
     const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
-    const removedPaths = [...new Set(previousPhotos.map(pathnameFromPhoto).filter(Boolean))].filter(pathname => !retainedPaths.has(pathname))
+    const requestedRemovedPaths = Array.isArray(b.removedPhotos) ? b.removedPhotos.map(pathnameFromPhoto).filter(Boolean) : []
+    const removedPaths = [...new Set([...previousPhotos.map(pathnameFromPhoto).filter(Boolean), ...requestedRemovedPaths])].filter(pathname => !retainedPaths.has(pathname))
     if (i >= 0) s.vehicles[i] = { ...s.vehicles[i], ...v }
     else s.vehicles.unshift(v)
     // Persist the new photo list before deleting anything from Blob. If saving fails,
