@@ -97,13 +97,21 @@ function pathnameFromPhoto(value) {
   const raw = clean(value, 200000)
   if (!raw) return null
   try {
-    if (raw.startsWith('/api/media?')) return new URL(`https://ynr.local${raw}`).searchParams.get('path')
-    if (raw.startsWith('https://') || raw.startsWith('http://')) {
-      const u = new URL(raw)
-      if (u.hostname.endsWith('.private.blob.vercel-storage.com')) return decodeURIComponent(u.pathname.replace(/^\//, ''))
+    const u = new URL(raw, 'https://ynr.local')
+    if (u.pathname === '/api/media') {
+      const pathname = u.searchParams.get('path')
+      if (pathname?.startsWith('vehicles/') && !pathname.includes('..') && !pathname.includes('//')) return pathname
+    }
+    if (u.pathname.startsWith('/api/media/')) {
+      const pathname = decodeURIComponent(u.pathname.slice('/api/media/'.length))
+      if (pathname.startsWith('vehicles/') && !pathname.includes('..') && !pathname.includes('//')) return pathname
+    }
+    if (u.hostname.endsWith('.private.blob.vercel-storage.com')) {
+      const pathname = decodeURIComponent(u.pathname.replace(/^\\//, ''))
+      if (pathname.startsWith('vehicles/') && !pathname.includes('..') && !pathname.includes('//')) return pathname
     }
   } catch {}
-  if (raw.startsWith('vehicles/')) return raw
+  if (raw.startsWith('vehicles/') && !raw.includes('..') && !raw.includes('//')) return raw
   return null
 }
 function publicPhotos(photos) {
@@ -479,11 +487,24 @@ app.post('/api/vehicles', auth, async (req, res) => {
   const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, pricing: normalizePricing(b.pricing, Number(b.price) || 0), description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], featuredPhoto: clean(b.featuredPhoto, 100 * 1024 * 1024), active: b.active !== false, featured: Boolean(b.featured), visiblePrices: normalizeVisiblePrices(b.visiblePrices), createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
-    const s = await readStore(); const i = s.vehicles.findIndex(x => x.id === v.id)
+    const s = await readStore()
+    const i = s.vehicles.findIndex(x => x.id === v.id)
+    const previousPhotos = i >= 0 && Array.isArray(s.vehicles[i].photos) ? s.vehicles[i].photos : []
+    const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
+    const requestedRemovedPaths = Array.isArray(b.removedPhotos) ? b.removedPhotos.map(pathnameFromPhoto).filter(Boolean) : []
+    const removedPaths = [...new Set([...previousPhotos.map(pathnameFromPhoto).filter(Boolean), ...requestedRemovedPaths])].filter(pathname => !retainedPaths.has(pathname))
     if (i >= 0) s.vehicles[i] = { ...s.vehicles[i], ...v }
     else s.vehicles.unshift(v)
+    // Persist the new photo list before deleting anything from Blob. If saving fails,
+    // every original image remains untouched and the vehicle still references it.
     await writeStore(s)
-    res.status(201).json({ ...v, photos: publicPhotos(v.photos) })
+    let photoCleanupWarning = false
+    if (blobEnabled && removedPaths.length) {
+      const results = await Promise.allSettled(removedPaths.map(pathname => del(pathname, blobOptions('private'))))
+      photoCleanupWarning = results.some(result => result.status === 'rejected')
+      if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
+    }
+    res.status(201).json({ ...v, photos: publicPhotos(v.photos), photoCleanupWarning })
   } catch (error) { console.error('[YNR] vehicle save:', error?.message || error); res.status(503).json({ message: 'Impossible d’enregistrer le véhicule.' }) }
 })
 app.patch('/api/vehicles/:id', auth, async (req, res) => {
@@ -492,10 +513,16 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
     Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, pricing: normalizePricing(req.body.pricing ?? v.pricing, Number(req.body.price ?? v.price) || 0), description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, featuredPhoto: clean(req.body.featuredPhoto, 100 * 1024 * 1024) || v.featuredPhoto || '', active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), visiblePrices: req.body.visiblePrices && typeof req.body.visiblePrices === 'object' ? normalizeVisiblePrices(req.body.visiblePrices) : normalizeVisiblePrices(v.visiblePrices), updatedAt: new Date().toISOString() })
-    const removed = oldPhotos.map(pathnameFromPhoto).filter(Boolean).filter(p => !v.photos.map(pathnameFromPhoto).includes(p))
-    if (blobEnabled) await Promise.all(removed.map(p => del(p, blobOptions('private')).catch(() => null)))
+    const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
+    const removed = [...new Set(oldPhotos.map(pathnameFromPhoto).filter(Boolean))].filter(pathname => !retainedPaths.has(pathname))
     await writeStore(s)
-    res.json({ ...v, photos: publicPhotos(v.photos) })
+    let photoCleanupWarning = false
+    if (blobEnabled && removed.length) {
+      const results = await Promise.allSettled(removed.map(pathname => del(pathname, blobOptions('private'))))
+      photoCleanupWarning = results.some(result => result.status === 'rejected')
+      if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
+    }
+    res.json({ ...v, photos: publicPhotos(v.photos), photoCleanupWarning })
   } catch (error) { console.error('[YNR] vehicle patch:', error?.message || error); res.status(503).json({ message: 'Impossible de modifier le véhicule.' }) }
 })
 app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
