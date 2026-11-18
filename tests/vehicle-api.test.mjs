@@ -12,7 +12,7 @@ test('API: login, archive, hidden listing, restore, guarded permanent deletion a
   const initial = {
     settings: { brand: 'YNR API TEST' },
     vehicles: [
-      { id: 'test-a', name: 'Véhicule test A', active: true, featured: true, price: 240, pricing: { weekday24h: 240 }, description: 'Description à conserver', photos: ['https://example.test/photo-a.jpg'], featuredPhoto: 'https://example.test/photo-a.jpg', createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: 'test-a', name: 'Véhicule test A', active: true, featured: true, price: 240, pricing: { weekday24h: 240 }, description: 'Description à conserver', photos: ['https://example.test/photo-a.jpg'], featuredPhoto: 'https://example.test/deleted-photo.jpg', createdAt: '2026-01-01T00:00:00.000Z' },
       { id: 'test-b', name: 'Véhicule test B', active: true, featured: false, price: 390, photos: ['https://example.test/photo-b.jpg'] }
     ],
     requests: [{ id: 'fake-request', name: 'Private test record' }],
@@ -54,6 +54,15 @@ test('API: login, archive, hidden listing, restore, guarded permanent deletion a
   cookie = response.headers.get('set-cookie')?.split(';')[0] || ''
   assert.match(cookie, /^ynr_session=/)
 
+  // Regression: the live store once had a featuredPhoto that had already
+  // been removed from photos. Neither APIs nor galleries must resurrect it.
+  response = await req('/api/public')
+  const beforeArchive = response.body.vehicles.find(v => v.id === 'test-a')
+  assert.deepEqual(beforeArchive.photos, ['https://example.test/photo-a.jpg'])
+  assert.equal(beforeArchive.featuredPhoto, 'https://example.test/photo-a.jpg')
+  response = await req('/api/admin')
+  assert.equal(response.body.vehicles.find(v => v.id === 'test-a').featuredPhoto, 'https://example.test/photo-a.jpg')
+
   response = await req('/api/vehicles/test-a', { method: 'DELETE' })
   assert.equal(response.status, 200)
   assert.equal(response.body.archived, true)
@@ -89,6 +98,39 @@ test('API: login, archive, hidden listing, restore, guarded permanent deletion a
   response = await req('/api/admin')
   assert.equal(response.body.vehicles.find(v => v.id === 'test-a').archivedAt, undefined)
   assert.deepEqual(response.body.vehicles.find(v => v.id === 'test-a').photos, ['https://example.test/photo-a.jpg'])
+
+  // Removing all photos must clear the old main image too, even if an
+  // outdated client submits a stale featuredPhoto value.
+  response = await req('/api/vehicles', { method: 'POST', body: JSON.stringify({
+    id: 'test-a', name: 'Véhicule test A', price: 240, photos: [], featuredPhoto: 'https://example.test/deleted-photo.jpg'
+  }) })
+  assert.equal(response.status, 201)
+  assert.deepEqual(response.body.photos, [])
+  assert.equal(response.body.featuredPhoto, '')
+  response = await req('/api/admin')
+  assert.deepEqual(response.body.vehicles.find(v => v.id === 'test-a').photos, [])
+  assert.equal(response.body.vehicles.find(v => v.id === 'test-a').featuredPhoto, '')
+  response = await req('/api/public')
+  assert.deepEqual(response.body.vehicles.find(v => v.id === 'test-a').photos, [])
+  assert.equal(response.body.vehicles.find(v => v.id === 'test-a').featuredPhoto, '')
+
+  // PATCH also accepts gallery edits but never reintroduces photos via an
+  // independent featuredPhoto reference.
+  response = await req('/api/vehicles/test-a', { method: 'PATCH', body: JSON.stringify({
+    photos: ['https://example.test/new-photo.jpg'], featuredPhoto: 'https://example.test/deleted-photo.jpg'
+  }) })
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body.photos, ['https://example.test/new-photo.jpg'])
+  assert.equal(response.body.featuredPhoto, 'https://example.test/new-photo.jpg')
+  response = await req('/api/vehicles/test-a', { method: 'PATCH', body: JSON.stringify({
+    photos: [], featuredPhoto: 'https://example.test/new-photo.jpg'
+  }) })
+  assert.equal(response.status, 200)
+  assert.deepEqual(response.body.photos, [])
+  assert.equal(response.body.featuredPhoto, '')
+  response = await req('/api/vehicles/test-a')
+  assert.deepEqual(response.body.photos, [])
+  assert.equal(response.body.featuredPhoto, '')
 
   response = await req('/api/vehicles/test-a/permanent', { method: 'DELETE', body: JSON.stringify({ confirmation: 'SUPPRIMER' }) })
   assert.equal(response.status, 409)

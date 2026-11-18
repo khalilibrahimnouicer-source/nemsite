@@ -66,7 +66,13 @@ function normalizeVisiblePrices(value) {
 }
 function normalizeStore(value) {
   const source = value && typeof value === 'object' ? value : {}
-  const vehicles = Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean) : []
+  // A vehicle's gallery is the single source of truth for its main image.
+  // Old records may still contain a deleted featuredPhoto which would appear
+  // again on the detail page unless we discard that stale reference on read.
+  const vehicles = Array.isArray(source.vehicles) ? source.vehicles.filter(Boolean).map(item => {
+    const photos = Array.isArray(item.photos) ? [...new Set(item.photos.filter(photo => typeof photo === 'string' && photo.trim()))] : []
+    return { ...item, photos, featuredPhoto: photos[0] || '' }
+  }) : []
   return {
     settings: source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings) ? { ...seed.settings, ...source.settings } : structuredClone(seed.settings),
     vehicles,
@@ -121,8 +127,12 @@ function publicPhotos(photos) {
     return pathname ? mediaUrl(pathname) : photo
   })
 }
+function publicVehicle(vehicle) {
+  const photos = publicPhotos(vehicle.photos)
+  return { ...vehicle, photos, featuredPhoto: photos[0] || '' }
+}
 function publicStore(store) {
-  return { settings: store.settings, vehicles: store.vehicles.filter(v => v && v.active !== false && !isArchived(v)).map(v => ({ ...v, photos: publicPhotos(v.photos) })) }
+  return { settings: store.settings, vehicles: store.vehicles.filter(v => v && v.active !== false && !isArchived(v)).map(publicVehicle) }
 }
 function isBlobNotFound(error) { return error?.name === 'BlobNotFoundError' || /not found/i.test(String(error?.message || '')) }
 
@@ -260,7 +270,7 @@ app.get('/api/vehicles/:id', async (req, res) => {
     const requestedId = String(req.params.id || '')
     const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false && !isArchived(item))
     if (!vehicle) return res.status(404).json({ message: 'Véhicule introuvable' })
-    return res.json({ ...vehicle, photos: publicPhotos(vehicle.photos) })
+    return res.json(publicVehicle(vehicle))
   } catch (error) {
     console.error('[YNR] product vehicle:', error?.message || error)
     return res.status(503).json({ message: 'Fiche véhicule temporairement indisponible.' })
@@ -273,8 +283,8 @@ app.get('/api/public', async (req, res) => {
   try {
     s = await readStore()
   } catch (error) {
-    console.error('[YNR] /api/public fallback:', error?.message || error)
-    s = normalizeStore(memory)
+    console.error('[YNR] /api/public storage unavailable:', error?.message || error)
+    return res.status(503).json({ message: 'Le catalogue est temporairement indisponible. Actualisez la page.' })
   }
 
   const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
@@ -285,7 +295,7 @@ app.get('/api/public', async (req, res) => {
   else if (sort === 'name') vehicles.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }) * dir)
   else vehicles.sort((a, b) => (Boolean(b.featured) - Boolean(a.featured)) || (new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0)))
 
-  res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })), blocked: s.blocked || [] })
+  res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(publicVehicle), blocked: s.blocked || [] })
 })
 
 async function serveMedia(req, res) {
@@ -498,6 +508,7 @@ function normalizePricing(value, basePrice = 0) {
 app.post('/api/vehicles', auth, async (req, res) => {
   const b = req.body || {}
   const v = { id: clean(b.id, 100) || crypto.randomUUID(), name: clean(b.name, 120), category: clean(b.category, 100) || 'Véhicule premium', price: Number(b.price) || 0, deposit: Number(b.deposit) || 0, pricing: normalizePricing(b.pricing, Number(b.price) || 0), description: clean(b.description, 2000), photos: Array.isArray(b.photos) ? [...new Set(b.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean))].slice(0, 8) : [], featuredPhoto: clean(b.featuredPhoto, 100 * 1024 * 1024), active: b.active !== false, featured: Boolean(b.featured), visiblePrices: normalizeVisiblePrices(b.visiblePrices), createdAt: b.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() }
+  v.featuredPhoto = v.photos[0] || ''
   if (!v.name) return res.status(400).json({ message: 'Nom du véhicule requis.' })
   try {
     const s = await readStore()
@@ -512,6 +523,10 @@ app.post('/api/vehicles', auth, async (req, res) => {
     // Persist the new photo list before deleting anything from Blob. If saving fails,
     // every original image remains untouched and the vehicle still references it.
     await writeStore(s)
+    const saved = (await readStore()).vehicles.find(item => item.id === v.id)
+    if (!saved || JSON.stringify(saved.photos) !== JSON.stringify(v.photos)) {
+      return res.status(503).json({ message: 'Photos non confirmées après enregistrement. Actualisez la page avant de réessayer.' })
+    }
     let photoCleanupWarning = false
     const stillUsedPhotos = new Set(s.vehicles.flatMap(item => [...(item.photos || []), item.featuredPhoto].map(pathnameFromPhoto).filter(Boolean)))
     const unreferencedPhotos = removedPaths.filter(pathname => !stillUsedPhotos.has(pathname))
@@ -520,7 +535,7 @@ app.post('/api/vehicles', auth, async (req, res) => {
       photoCleanupWarning = results.some(result => result.status === 'rejected')
       if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
     }
-    res.status(201).json({ ...v, photos: publicPhotos(v.photos), photoCleanupWarning })
+    res.status(201).json({ ...publicVehicle(saved), photoCleanupWarning })
   } catch (error) { console.error('[YNR] vehicle save:', error?.message || error); res.status(503).json({ message: 'Impossible d’enregistrer le véhicule.' }) }
 })
 app.patch('/api/vehicles/:id', auth, async (req, res) => {
@@ -530,9 +545,14 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
     if (isArchived(v)) return res.status(409).json({ message: 'Restaurez ce véhicule depuis les archives avant de le modifier.' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
     Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, pricing: normalizePricing(req.body.pricing ?? v.pricing, Number(req.body.price ?? v.price) || 0), description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, featuredPhoto: clean(req.body.featuredPhoto, 100 * 1024 * 1024) || v.featuredPhoto || '', active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), visiblePrices: req.body.visiblePrices && typeof req.body.visiblePrices === 'object' ? normalizeVisiblePrices(req.body.visiblePrices) : normalizeVisiblePrices(v.visiblePrices), updatedAt: new Date().toISOString() })
+    v.featuredPhoto = v.photos[0] || ''
     const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
     const removed = [...new Set(oldPhotos.map(pathnameFromPhoto).filter(Boolean))].filter(pathname => !retainedPaths.has(pathname))
     await writeStore(s)
+    const saved = (await readStore()).vehicles.find(item => item.id === v.id)
+    if (!saved || JSON.stringify(saved.photos) !== JSON.stringify(v.photos)) {
+      return res.status(503).json({ message: 'Photos non confirmées après modification. Actualisez la page avant de réessayer.' })
+    }
     let photoCleanupWarning = false
     const stillUsedPhotos = new Set(s.vehicles.flatMap(item => [...(item.photos || []), item.featuredPhoto].map(pathnameFromPhoto).filter(Boolean)))
     const unreferencedPhotos = removed.filter(pathname => !stillUsedPhotos.has(pathname))
@@ -541,7 +561,7 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
       photoCleanupWarning = results.some(result => result.status === 'rejected')
       if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
     }
-    res.json({ ...v, photos: publicPhotos(v.photos), photoCleanupWarning })
+    res.json({ ...publicVehicle(saved), photoCleanupWarning })
   } catch (error) { console.error('[YNR] vehicle patch:', error?.message || error); res.status(503).json({ message: 'Impossible de modifier le véhicule.' }) }
 })
 app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
@@ -551,7 +571,7 @@ app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
     if (isArchived(selected)) return res.status(409).json({ message: 'Un véhicule archivé ne peut pas être mis à l’affiche.' })
     s.vehicles = s.vehicles.map(vehicle => ({ ...vehicle, featured: vehicle.id === selected.id, updatedAt: new Date().toISOString() }))
     await writeStore(s)
-    res.json(s.vehicles.map(vehicle => ({ ...vehicle, photos: publicPhotos(vehicle.photos) })))
+    res.json(s.vehicles.map(publicVehicle))
   } catch (error) {
     console.error('[YNR] featured vehicle update:', error?.message || error)
     res.status(503).json({ message: 'Impossible de définir le véhicule principal.' })
@@ -586,7 +606,7 @@ app.patch('/api/vehicles/:id/restore', auth, async (req, res) => {
     const persisted = await readStore()
     const restored = persisted.vehicles.find(item => String(item.id) === id && !isArchived(item) && item.active !== false)
     if (!restored) return res.status(503).json({ message: 'Restauration non confirmée dans le stockage. Actualisez la page.' })
-    return res.json({ ok: true, id, restored: true, vehicle: { ...restored, photos: publicPhotos(restored.photos) } })
+    return res.json({ ok: true, id, restored: true, vehicle: publicVehicle(restored) })
   } catch (error) {
     console.error('[YNR] vehicle restore:', error?.message || error)
     return res.status(503).json({ message: 'Impossible de remettre en ligne ce véhicule.' })
@@ -643,7 +663,7 @@ app.get('/api/seo-vehicle/:id', async (req, res, next) => {
     const vehicleDetails = plainText(vehicle.description || 'Consultez les tarifs et demandez votre réservation directement auprès de notre équipe.')
     const description = `Location de ${plainText(vehicle.name)} avec YNR Location — YNR Luxury en Île-de-France. ${vehicleDetails}`.slice(0, 160)
     const canonical = 'https://www.ynr-location.com/vehicle/' + encodeURIComponent(requestedId)
-    const rawImage = vehicle.featuredPhoto || (Array.isArray(vehicle.photos) ? vehicle.photos[0] : '') || '/ynr-luxury-new.jpg'
+    const rawImage = vehicle.photos[0] || '/ynr-luxury-new.jpg'
     const image = /^https?:\/\//i.test(rawImage) ? rawImage : 'https://www.ynr-location.com' + (rawImage.startsWith('/') ? rawImage : '/' + rawImage)
     const price = Number(vehicle.pricing?.weekday24h ?? vehicle.price)
     const jsonLd = {
