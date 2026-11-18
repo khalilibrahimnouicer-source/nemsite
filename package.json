@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"node server.mjs\" \"vite\"",
-    "build": "vite build",
+    "build": "node --test && vite build",
+    "test": "node --test",
     "start": "node server.mjs"
   },
   "dependencies": {
