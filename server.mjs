@@ -16,7 +16,7 @@ const PORT = Number(process.env.PORT || 8787)
 const OWNER_EMAIL = String(process.env.OWNER_EMAIL || 'ynr.location@gmail.com').trim().toLowerCase()
 const OWNER_PASSWORD_HASH = String(process.env.OWNER_PASSWORD_HASH || '').trim()
 const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim()
-const DATA_FILE = path.join(root, 'data', 'store.json')
+const DATA_FILE = process.env.NODE_ENV === 'test' && process.env.YNR_TEST_DATA_FILE ? process.env.YNR_TEST_DATA_FILE : path.join(root, 'data', 'store.json')
 const STORE_PATH = 'data/store.json'
 const BLOB_STORE_ID = String(process.env.BLOB_STORE_ID || '').trim()
 const BLOB_STATIC_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL_BLOB_READ_WRITE_TOKEN || process.env.BLOB_TOKEN || process.env.VERCEL_BLOB_TOKEN || '').trim()
@@ -681,6 +681,6 @@ app.use((req, res, next) => { if (req.path.startsWith('/api/')) return next(); i
 if (isProd && !SESSION_SECRET) console.error('[YNR] SESSION_SECRET is missing in production.')
 if (isProd && !OWNER_PASSWORD_HASH) console.error('[YNR] OWNER_PASSWORD_HASH is missing in production.')
 if (isProd && !blobEnabled) console.error('[YNR] BLOB_READ_WRITE_TOKEN is missing in production.')
-if (!process.env.VERCEL) app.listen(PORT, () => console.log(`[YNR] http://localhost:${PORT}`))
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') app.listen(PORT, () => console.log(`[YNR] http://localhost:${PORT}`))
 
 export default app
