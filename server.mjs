@@ -541,13 +541,46 @@ app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
   }
 })
 app.delete('/api/vehicles/:id', auth, async (req, res) => {
+  const vehicleId = clean(req.params.id, 100)
+  if (!vehicleId) return res.status(400).json({ message: 'Identifiant du véhicule invalide.' })
   try {
-    const s = await readStore(), vehicle = s.vehicles.find(x => x.id === req.params.id)
-    if (!vehicle) return res.sendStatus(404)
-    if (blobEnabled) await Promise.all((vehicle.photos || []).map(pathnameFromPhoto).filter(Boolean).map(p => del(p, blobOptions('private')).catch(() => null)))
-    s.vehicles = s.vehicles.filter(x => x.id !== req.params.id)
-    await writeStore(s); res.sendStatus(204)
-  } catch (error) { console.error('[YNR] vehicle delete:', error?.message || error); res.status(503).json({ message: 'Impossible de supprimer le véhicule.' }) }
+    const store = await readStore()
+    const vehicle = store.vehicles.find(item => String(item.id) === vehicleId)
+    if (!vehicle) return res.status(404).json({ message: 'Véhicule introuvable. Actualisez la flotte.' })
+
+    // Persist the deletion first. Never delete a vehicle's photos while it is
+    // still present in the catalogue: a failed write must leave them intact.
+    store.vehicles = store.vehicles.filter(item => String(item.id) !== vehicleId)
+    await writeStore(store)
+
+    // Bypass the Blob CDN and confirm the persistent store no longer includes
+    // the car before reporting success or cleaning up its media.
+    const persisted = await readStore()
+    if (persisted.vehicles.some(item => String(item.id) === vehicleId)) {
+      console.error('[YNR] Vehicle deletion did not persist:', vehicleId)
+      return res.status(503).json({ message: 'La suppression n’a pas été confirmée dans le stockage. Réessayez.' })
+    }
+
+    // Only delete media no longer referenced by another vehicle. Batch the
+    // operation to avoid timing out on cars with several photos.
+    const photoPaths = item => [...(Array.isArray(item.photos) ? item.photos : []), item.featuredPhoto]
+      .map(pathnameFromPhoto).filter(Boolean)
+    const stillUsed = new Set(persisted.vehicles.flatMap(photoPaths))
+    const unused = [...new Set(photoPaths(vehicle))].filter(pathname => !stillUsed.has(pathname))
+    let photoCleanupWarning = false
+    if (blobEnabled && unused.length) {
+      try {
+        await del(unused, blobOptions('private'))
+      } catch (error) {
+        photoCleanupWarning = true
+        console.error('[YNR] Vehicle deleted but Blob photo cleanup failed:', error?.message || error)
+      }
+    }
+    return res.status(200).json({ ok: true, id: vehicleId, photoCleanupWarning })
+  } catch (error) {
+    console.error('[YNR] vehicle delete:', error?.message || error)
+    return res.status(503).json({ message: 'Impossible de supprimer le véhicule. Aucune autre voiture n’a été modifiée.' })
+  }
 })
 app.put('/api/calendar', auth, async (req, res) => { try { const s = await readStore(); s.blocked = Array.isArray(req.body) ? req.body.filter(x => x.vehicleId && x.start && x.end).slice(0, 500) : []; await writeStore(s); res.json(s.blocked) } catch { res.status(503).json({ message: 'Impossible d’enregistrer le calendrier.' }) } })
 app.put('/api/settings', auth, async (req, res) => { try { const s = await readStore(); s.settings = { ...s.settings, ...Object.fromEntries(Object.entries(req.body || {}).map(([k, v]) => [k, clean(v, 500)])) }; await writeStore(s); res.json(s.settings) } catch { res.status(503).json({ message: 'Impossible d’enregistrer les réglages.' }) } })
