@@ -53,3 +53,17 @@
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
 .password-field{position:relative;display:flex;align-items:center;width:100%}.login-card .password-field input{width:100%;padding-right:48px}.password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:#66717c}.password-toggle:hover{background:#e7eaed;color:#11151a}.password-toggle:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Reversible fleet archive — black/blue YNR admin theme */
+.admin aside .archive-nav-count{margin-left:auto;min-width:22px;height:22px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:99px;background:rgba(21,121,255,.24);color:#76b2ff;font-size:11px;font-weight:700}
+.archive-explain{display:block;max-width:640px;margin-top:8px;font-size:12px;line-height:1.55;color:#657482}
+.archive-date{display:inline-block;margin-top:10px;padding:5px 9px;background:#eef2f6;border:1px solid #dce5ed;border-radius:99px;color:#52616f;font-size:11px;font-weight:600}
+.admin-actions button.archive-soft,.admin-actions button.archive-restore,.admin-actions button.archive-danger{width:auto;min-height:38px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 12px;border-radius:7px;font-size:11px;font-weight:650;white-space:nowrap}
+.admin-actions button.archive-soft{border-color:#bfcee0;color:#355575;background:#f0f6fd}
+.admin-actions button.archive-restore{border-color:#a7c6f4;color:#075ec4;background:#eaf3ff}
+.admin-actions button.archive-danger{border-color:#f0c6c6;color:#aa3030;background:#fff3f3}
+.admin-actions button:disabled{opacity:.52;cursor:not-allowed}
+.admin-actions button.archive-soft:not(:disabled):hover,.admin-actions button.archive-restore:not(:disabled):hover{border-color:#1579ff}
+.admin-actions button.archive-danger:not(:disabled):hover{border-color:#cc4545;background:#ffe6e6}
+@media(max-width:800px){.admin-cars article{grid-template-columns:minmax(100px,150px) minmax(0,1fr);gap:12px}.admin-cars article .admin-actions{grid-column:1/-1;justify-content:flex-end}.admin-actions button.archive-soft,.admin-actions button.archive-restore,.admin-actions button.archive-danger{white-space:normal}}
+@media(max-width:500px){.admin-cars article{grid-template-columns:100px minmax(0,1fr)}.admin-actions button.archive-soft,.admin-actions button.archive-restore,.admin-actions button.archive-danger{flex:1 1 auto}.archive-explain{font-size:11px}}
