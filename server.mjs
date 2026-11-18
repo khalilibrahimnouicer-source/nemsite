@@ -7,6 +7,7 @@ import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import { put, del, get } from '@vercel/blob'
+import { isArchived, archiveVehicle, restoreVehicle, removeArchivedVehicle } from './archive-vehicles.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -121,7 +122,7 @@ function publicPhotos(photos) {
   })
 }
 function publicStore(store) {
-  return { ...store, vehicles: store.vehicles.map(v => ({ ...v, photos: publicPhotos(v.photos) })) }
+  return { settings: store.settings, vehicles: store.vehicles.filter(v => v && v.active !== false && !isArchived(v)).map(v => ({ ...v, photos: publicPhotos(v.photos) })) }
 }
 function isBlobNotFound(error) { return error?.name === 'BlobNotFoundError' || /not found/i.test(String(error?.message || '')) }
 
@@ -210,7 +211,7 @@ app.get('/api/sitemap.xml', async (_, res) => {
   try {
     const store = await readStore()
     for (const vehicle of store.vehicles) {
-      if (!vehicle || vehicle.active === false || vehicle.id == null || !String(vehicle.id).trim()) continue
+      if (!vehicle || vehicle.active === false || isArchived(vehicle) || vehicle.id == null || !String(vehicle.id).trim()) continue
       const entry = {
         loc: base + '/vehicle/' + encodeURIComponent(String(vehicle.id)),
         priority: '0.8',
@@ -257,7 +258,7 @@ app.get('/api/vehicles/:id', async (req, res) => {
   try {
     const store = await readStore()
     const requestedId = String(req.params.id || '')
-    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false)
+    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false && !isArchived(item))
     if (!vehicle) return res.status(404).json({ message: 'Véhicule introuvable' })
     return res.json({ ...vehicle, photos: publicPhotos(vehicle.photos) })
   } catch (error) {
@@ -277,7 +278,7 @@ app.get('/api/public', async (req, res) => {
   }
 
   const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
-  let vehicles = sourceVehicles.filter(v => v && v.active !== false)
+  let vehicles = sourceVehicles.filter(v => v && v.active !== false && !isArchived(v))
   const sort = String(req.query.sort || 'recent')
   const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
   if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
@@ -462,6 +463,7 @@ app.post('/api/requests', async (req, res) => {
   try {
     const s = await readStore()
     const reservation = { id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, documents, status: 'nouvelle', createdAt: new Date().toISOString() }
+    if (vehicleId && !s.vehicles.some(item => String(item.id) === vehicleId && item.active !== false && !isArchived(item))) return res.status(409).json({ message: 'Ce véhicule n’est plus disponible à la réservation.' })
     s.requests.unshift(reservation)
     await writeStore(s)
     const notification = await notifyReservation(reservation)
@@ -492,6 +494,7 @@ app.post('/api/vehicles', auth, async (req, res) => {
   try {
     const s = await readStore()
     const i = s.vehicles.findIndex(x => x.id === v.id)
+    if (i >= 0 && isArchived(s.vehicles[i])) return res.status(409).json({ message: 'Restaurez ce véhicule depuis les archives avant de le modifier.' })
     const previousPhotos = i >= 0 && Array.isArray(s.vehicles[i].photos) ? s.vehicles[i].photos : []
     const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
     const requestedRemovedPaths = Array.isArray(b.removedPhotos) ? b.removedPhotos.map(pathnameFromPhoto).filter(Boolean) : []
@@ -502,8 +505,10 @@ app.post('/api/vehicles', auth, async (req, res) => {
     // every original image remains untouched and the vehicle still references it.
     await writeStore(s)
     let photoCleanupWarning = false
-    if (blobEnabled && removedPaths.length) {
-      const results = await Promise.allSettled(removedPaths.map(pathname => del(pathname, blobOptions('private'))))
+    const stillUsedPhotos = new Set(s.vehicles.flatMap(item => [...(item.photos || []), item.featuredPhoto].map(pathnameFromPhoto).filter(Boolean)))
+    const unreferencedPhotos = removedPaths.filter(pathname => !stillUsedPhotos.has(pathname))
+    if (blobEnabled && unreferencedPhotos.length) {
+      const results = await Promise.allSettled(unreferencedPhotos.map(pathname => del(pathname, blobOptions('private'))))
       photoCleanupWarning = results.some(result => result.status === 'rejected')
       if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
     }
@@ -514,14 +519,17 @@ app.patch('/api/vehicles/:id', auth, async (req, res) => {
   try {
     const s = await readStore(), v = s.vehicles.find(x => x.id === req.params.id)
     if (!v) return res.status(404).json({ message: 'Véhicule introuvable' })
+    if (isArchived(v)) return res.status(409).json({ message: 'Restaurez ce véhicule depuis les archives avant de le modifier.' })
     const oldPhotos = Array.isArray(v.photos) ? v.photos : []
     Object.assign(v, { name: clean(req.body.name, 120) || v.name, category: clean(req.body.category, 100) || v.category, price: Number(req.body.price ?? v.price) || 0, deposit: Number(req.body.deposit ?? v.deposit) || 0, pricing: normalizePricing(req.body.pricing ?? v.pricing, Number(req.body.price ?? v.price) || 0), description: clean(req.body.description, 2000), photos: Array.isArray(req.body.photos) ? req.body.photos.map(x => clean(x, 100 * 1024 * 1024)).filter(Boolean).slice(0, 8) : oldPhotos, featuredPhoto: clean(req.body.featuredPhoto, 100 * 1024 * 1024) || v.featuredPhoto || '', active: req.body.active !== undefined ? Boolean(req.body.active) : v.active, featured: req.body.featured !== undefined ? Boolean(req.body.featured) : Boolean(v.featured), visiblePrices: req.body.visiblePrices && typeof req.body.visiblePrices === 'object' ? normalizeVisiblePrices(req.body.visiblePrices) : normalizeVisiblePrices(v.visiblePrices), updatedAt: new Date().toISOString() })
     const retainedPaths = new Set(v.photos.map(pathnameFromPhoto).filter(Boolean))
     const removed = [...new Set(oldPhotos.map(pathnameFromPhoto).filter(Boolean))].filter(pathname => !retainedPaths.has(pathname))
     await writeStore(s)
     let photoCleanupWarning = false
-    if (blobEnabled && removed.length) {
-      const results = await Promise.allSettled(removed.map(pathname => del(pathname, blobOptions('private'))))
+    const stillUsedPhotos = new Set(s.vehicles.flatMap(item => [...(item.photos || []), item.featuredPhoto].map(pathnameFromPhoto).filter(Boolean)))
+    const unreferencedPhotos = removed.filter(pathname => !stillUsedPhotos.has(pathname))
+    if (blobEnabled && unreferencedPhotos.length) {
+      const results = await Promise.allSettled(unreferencedPhotos.map(pathname => del(pathname, blobOptions('private'))))
       photoCleanupWarning = results.some(result => result.status === 'rejected')
       if (photoCleanupWarning) console.error('[YNR] Some removed vehicle photos could not be deleted from Blob.')
     }
@@ -532,6 +540,7 @@ app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
   try {
     const s = await readStore(), selected = s.vehicles.find(x => x.id === req.params.id)
     if (!selected) return res.status(404).json({ message: 'Véhicule introuvable' })
+    if (isArchived(selected)) return res.status(409).json({ message: 'Un véhicule archivé ne peut pas être mis à l’affiche.' })
     s.vehicles = s.vehicles.map(vehicle => ({ ...vehicle, featured: vehicle.id === selected.id, updatedAt: new Date().toISOString() }))
     await writeStore(s)
     res.json(s.vehicles.map(vehicle => ({ ...vehicle, photos: publicPhotos(vehicle.photos) })))
@@ -540,46 +549,70 @@ app.patch('/api/vehicles/:id/featured', auth, async (req, res) => {
     res.status(503).json({ message: 'Impossible de définir le véhicule principal.' })
   }
 })
+// DELETE archives without touching photos: the operation is reversible.
 app.delete('/api/vehicles/:id', auth, async (req, res) => {
-  const vehicleId = clean(req.params.id, 100)
-  if (!vehicleId) return res.status(400).json({ message: 'Identifiant du véhicule invalide.' })
+  const id = clean(req.params.id, 100)
+  if (!id) return res.status(400).json({ message: 'Identifiant du véhicule invalide.' })
   try {
-    const store = await readStore()
-    const vehicle = store.vehicles.find(item => String(item.id) === vehicleId)
-    if (!vehicle) return res.status(404).json({ message: 'Véhicule introuvable. Actualisez la flotte.' })
-
-    // Persist the deletion first. Never delete a vehicle's photos while it is
-    // still present in the catalogue: a failed write must leave them intact.
-    store.vehicles = store.vehicles.filter(item => String(item.id) !== vehicleId)
+    const store = await readStore(), result = archiveVehicle(store, id)
+    if (result.status === 'missing') return res.status(404).json({ message: 'Véhicule introuvable.' })
+    if (result.status === 'already-archived') return res.status(409).json({ message: 'Véhicule déjà archivé.' })
     await writeStore(store)
-
-    // Bypass the Blob CDN and confirm the persistent store no longer includes
-    // the car before reporting success or cleaning up its media.
     const persisted = await readStore()
-    if (persisted.vehicles.some(item => String(item.id) === vehicleId)) {
-      console.error('[YNR] Vehicle deletion did not persist:', vehicleId)
-      return res.status(503).json({ message: 'La suppression n’a pas été confirmée dans le stockage. Réessayez.' })
-    }
+    if (!persisted.vehicles.some(item => String(item.id) === id && isArchived(item))) return res.status(503).json({ message: 'Archivage non confirmé dans le stockage. Actualisez la page.' })
+    return res.json({ ok: true, id, archived: true })
+  } catch (error) {
+    console.error('[YNR] vehicle archive:', error?.message || error)
+    return res.status(503).json({ message: 'Impossible d’archiver le véhicule. Aucune photo n’a été supprimée.' })
+  }
+})
 
-    // Only delete media no longer referenced by another vehicle. Batch the
-    // operation to avoid timing out on cars with several photos.
-    const photoPaths = item => [...(Array.isArray(item.photos) ? item.photos : []), item.featuredPhoto]
-      .map(pathnameFromPhoto).filter(Boolean)
-    const stillUsed = new Set(persisted.vehicles.flatMap(photoPaths))
-    const unused = [...new Set(photoPaths(vehicle))].filter(pathname => !stillUsed.has(pathname))
+app.patch('/api/vehicles/:id/restore', auth, async (req, res) => {
+  const id = clean(req.params.id, 100)
+  if (!id) return res.status(400).json({ message: 'Identifiant du véhicule invalide.' })
+  try {
+    const store = await readStore(), result = restoreVehicle(store, id)
+    if (result.status === 'missing') return res.status(404).json({ message: 'Véhicule introuvable.' })
+    if (result.status === 'not-archived') return res.status(409).json({ message: 'Véhicule déjà dans la flotte.' })
+    await writeStore(store)
+    const persisted = await readStore()
+    const restored = persisted.vehicles.find(item => String(item.id) === id && !isArchived(item) && item.active !== false)
+    if (!restored) return res.status(503).json({ message: 'Restauration non confirmée dans le stockage. Actualisez la page.' })
+    return res.json({ ok: true, id, restored: true, vehicle: { ...restored, photos: publicPhotos(restored.photos) } })
+  } catch (error) {
+    console.error('[YNR] vehicle restore:', error?.message || error)
+    return res.status(503).json({ message: 'Impossible de remettre en ligne ce véhicule.' })
+  }
+})
+
+// Only an archived car can be permanently removed; deletion needs a separate
+// explicit confirmation and saves data before cleaning any unshared media.
+app.delete('/api/vehicles/:id/permanent', auth, async (req, res) => {
+  const id = clean(req.params.id, 100)
+  if (!id) return res.status(400).json({ message: 'Identifiant du véhicule invalide.' })
+  if (req.body?.confirmation !== 'SUPPRIMER') return res.status(400).json({ message: 'Confirmation SUPPRIMER requise.' })
+  try {
+    const store = await readStore(), result = removeArchivedVehicle(store, id)
+    if (result.status === 'missing') return res.status(404).json({ message: 'Véhicule introuvable.' })
+    if (result.status === 'not-archived') return res.status(409).json({ message: 'Archivez le véhicule avant sa suppression définitive.' })
+    await writeStore(store)
+    const persisted = await readStore()
+    if (persisted.vehicles.some(item => String(item.id) === id)) return res.status(503).json({ message: 'Suppression non confirmée dans le stockage. Actualisez la page.' })
+    const paths = item => [...(Array.isArray(item.photos) ? item.photos : []), item.featuredPhoto].map(pathnameFromPhoto).filter(Boolean)
+    const stillUsed = new Set(persisted.vehicles.flatMap(paths))
+    const unused = [...new Set(paths(result.vehicle))].filter(pathname => !stillUsed.has(pathname))
     let photoCleanupWarning = false
     if (blobEnabled && unused.length) {
-      try {
-        await del(unused, blobOptions('private'))
-      } catch (error) {
+      try { await del(unused, blobOptions('private')) }
+      catch (error) {
         photoCleanupWarning = true
-        console.error('[YNR] Vehicle deleted but Blob photo cleanup failed:', error?.message || error)
+        console.error('[YNR] Archived vehicle removed, photo cleanup failed:', error?.message || error)
       }
     }
-    return res.status(200).json({ ok: true, id: vehicleId, photoCleanupWarning })
+    return res.json({ ok: true, id, permanentlyDeleted: true, photoCleanupWarning })
   } catch (error) {
-    console.error('[YNR] vehicle delete:', error?.message || error)
-    return res.status(503).json({ message: 'Impossible de supprimer le véhicule. Aucune autre voiture n’a été modifiée.' })
+    console.error('[YNR] archived vehicle permanent delete:', error?.message || error)
+    return res.status(503).json({ message: 'Suppression définitive impossible. Vérifiez les archives.' })
   }
 })
 app.put('/api/calendar', auth, async (req, res) => { try { const s = await readStore(); s.blocked = Array.isArray(req.body) ? req.body.filter(x => x.vehicleId && x.start && x.end).slice(0, 500) : []; await writeStore(s); res.json(s.blocked) } catch { res.status(503).json({ message: 'Impossible d’enregistrer le calendrier.' }) } })
