@@ -417,8 +417,16 @@ app.post('/api/uploads', auth, async (req, res) => {
 app.delete('/api/uploads', auth, async (req, res) => {
   const pathname = pathnameFromPhoto(clean(req.body?.url, 200000))
   if (!pathname) return res.status(400).json({ message: 'Photo YNR introuvable' })
-  try { if (blobEnabled) await del(pathname, blobOptions('private')); res.sendStatus(204) }
-  catch (error) { console.error('[YNR] Blob delete failed:', error?.message || error); res.status(503).json({ message: 'Impossible de supprimer la photo' }) }
+  try {
+    const store = await readStore()
+    const used = store.vehicles.some(vehicle => [...(vehicle.photos || []), vehicle.featuredPhoto].some(photo => pathnameFromPhoto(photo) === pathname))
+    if (used) return res.status(409).json({ message: 'Cette photo est encore utilisée par un véhicule, même archivé.' })
+    if (blobEnabled) await del(pathname, blobOptions('private'))
+    res.sendStatus(204)
+  } catch (error) {
+    console.error('[YNR] Blob delete failed:', error?.message || error)
+    res.status(503).json({ message: 'Impossible de supprimer la photo' })
+  }
 })
 
 async function notifyReservation(request) {
@@ -627,7 +635,7 @@ app.get('/api/seo-vehicle/:id', async (req, res, next) => {
     const requestedId = String(req.params.id || '')
     if (!requestedId || requestedId.length > 200) return res.status(404).send('Véhicule introuvable')
     const store = await readStore()
-    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false)
+    const vehicle = store.vehicles.find(item => String(item.id) === requestedId && item.active !== false && !isArchived(item))
     if (!vehicle) return res.status(404).send('Véhicule introuvable')
     const htmlEscape = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
     const plainText = value => String(value ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
