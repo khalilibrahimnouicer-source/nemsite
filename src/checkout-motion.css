@@ -20,7 +20,8 @@
 .cart-fab.yn-cart-fab,.yn-add-inner {display:inline-flex;align-items:center;gap:8px}
 .yn-cart-fab strong {display:grid;place-items:center;border-radius:99px;min-width:22px;height:22px;margin:0;background:#fff;color:#10365c}
 .yn-submit-spinner {width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block}
-.yn-dialog .form-error {color:#ffb6ad}
+.yn-dialog .modal {color-scheme:light}
+.yn-dialog .form-error {color:#a12420}
 @media(prefers-reduced-motion:no-preference){
   .yn-dialog[open]::backdrop {animation:yn-dim .24s ease both}
   .yn-dialog.is-closing::backdrop {animation:yn-undim .17s ease both}
