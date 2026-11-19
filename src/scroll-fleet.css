@@ -1,0 +1,66 @@
+.public.classic-scroll { overflow: clip; }
+.classic-scroll .hero { min-height:0; }
+.classic-scroll .hero-image { min-width:0; height:clamp(440px,43vw,700px); min-height:0; }
+.classic-scroll .hero-image > img { position:absolute;inset:0; }
+.classic-scroll .hero-copy {min-width:0;padding:clamp(32px,4.8vw,82px);}
+.classic-scroll .hero h1 {font-size:clamp(52px,6vw,100px);}
+.classic-scroll .hero-copy .lead {max-width:42ch;}
+.classic-scroll .hero-card {z-index:1;min-width:0;max-width:calc(100% - 40px);}
+.classic-scroll #fleet {scroll-margin-top:76px;padding:clamp(44px,6vw,98px) max(5vw,calc((100vw - 1380px)/2));}
+.classic-scroll #fleet .section-head {align-items:baseline;flex-direction:row;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+.classic-scroll #fleet .section-head h2 {margin:0;}
+.drive-list {display:grid;gap:clamp(35px,6vw,90px);}
+.drive-car {display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);align-items:center;gap:clamp(24px,5vw,90px);padding-top:22px;border-top:1px solid #28323e;}
+.drive-car:nth-child(even) {grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);}
+.drive-car:nth-child(even) .drive-frame {order:2;--direction:-1;}
+.drive-frame {position:relative;display:grid;place-items:center;width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:10px;background:#111822;color:#c4ccda;}
+.drive-frame>img {display:block;width:100%;height:100%;position:absolute;inset:0;object-fit:cover;}
+.drive-copy {min-width:0;}
+.drive-copy .eyebrow {margin:0 0 10px;color:#91baff;}
+.drive-copy h3 {font:650 clamp(28px,3.6vw,62px)/1.02 Manrope,Arial,sans-serif;letter-spacing:-.055em;margin:0;overflow-wrap:anywhere;}
+.drive-description {line-height:1.6;color:#bdc7d4;white-space:pre-line;overflow-wrap:anywhere;}
+.drive-price {margin:20px 0 14px;font-size:14px;color:#b4c0cf;}
+.drive-price strong {font-size:25px;color:white;}
+.drive-link {display:inline-flex;gap:12px;align-items:center;min-height:44px;color:#9ac3ff;font-weight:650;}
+.drive-link:hover {text-decoration:underline;}
+@media (prefers-reduced-motion:no-preference) {
+  .classic-scroll .drive-frame>img,.classic-scroll .hero-image[data-car-motion]>img {
+    animation:none;transition:none;
+    transform:translate3d(calc(var(--travel,0) * var(--direction,1) * 4%),calc(var(--travel,0) * -3%),0) scale(1.09);
+  }
+}
+@media (max-width:900px) and (min-width:651px) {
+  .classic-scroll .hero {display:grid;grid-template-columns:1fr 1.1fr;}
+  .classic-scroll .hero-copy {padding:30px 22px;}
+  .classic-scroll .hero h1 {font-size:clamp(40px,6vw,60px);}
+  .classic-scroll .hero-image {height:auto;min-height:430px;}
+}
+@media(max-width:650px) {
+  .classic-scroll .hero-image {width:100%;height:auto;min-height:0;max-height:none;aspect-ratio:4/3;}
+  .classic-scroll .hero-card {bottom:12px;left:12px;padding:10px 14px;}
+  .classic-scroll .hero-card strong {font-size:17px;margin:4px 0;}
+  .classic-scroll .hero-copy {width:100%;min-height:0;padding:28px 5vw 32px;}
+  .classic-scroll .hero h1 {font-size:clamp(40px,11vw,62px);}
+  .classic-scroll .hero-meta {margin-top:16px;}
+  .drive-car,.drive-car:nth-child(even) {grid-template-columns:minmax(0,1fr);gap:16px;}
+  .drive-car:nth-child(even) .drive-frame {order:0;}
+  .classic-scroll #fleet {scroll-margin-top:64px;}
+}
+.drive-description {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;white-space:normal;}
+.product-page .product-layout,.product-page .product-gallery-wrap,.product-page .product-copy {min-width:0;}
+.product-page .product-gallery-wrap,.product-page .product-gallery {display:block;width:100%;max-width:100%;margin:0;flex:auto;}
+.product-page .product-gallery-track {width:100%;align-items:center;}
+.product-page .product-gallery-track img,.product-page .product-gallery-track img:first-child {display:block;min-width:0;min-height:0;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;background:#101419;}
+@media(max-width:900px){
+  .product-page .product-layout {display:flex;flex-direction:column;padding:24px 5vw 76px;}
+  .product-page .product-copy {position:static;width:100%;padding:0;}
+  .product-page .product-copy h1 {overflow-wrap:anywhere;}
+}
+@media(min-width:651px) and (max-width:900px){
+  .classic-scroll .hero-image>img {object-fit:contain;}
+  .classic-scroll .hero-image {background:#0c0e11;}
+}
+
+@media(prefers-reduced-motion:no-preference){
+  .drive-frame {transform:translateX(calc(var(--entry,0) * var(--direction,1) * -15%));}
+}
