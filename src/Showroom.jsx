@@ -34,7 +34,18 @@ function HeroGallery({ vehicles, loading }) {
   const [studio, setStudio] = useState(false)
   const current = photos[index % (photos.length || 1)]
   const showScene = studio || (!current && !loading)
-  return <div className="yn-display">
+  function tiltPhoto(event) {
+    if (showScene || event.pointerType !== 'mouse' || !window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) return
+    const panel = event.currentTarget
+    const bounds = panel.getBoundingClientRect()
+    panel.style.setProperty('--turn', ((event.clientX - bounds.left) / bounds.width - .5) * 4 + 'deg')
+    panel.style.setProperty('--lift', (.5 - (event.clientY - bounds.top) / bounds.height) * 3 + 'deg')
+  }
+  function resetTilt(event) {
+    event.currentTarget.style.removeProperty('--turn')
+    event.currentTarget.style.removeProperty('--lift')
+  }
+  return <div className="yn-display" onPointerMove={tiltPhoto} onPointerLeave={resetTilt} onClick={resetTilt}>
     {showScene ? <div className="yn-concept"><ShowroomScene /><small>Étude de style YNR</small></div> : current ?
       <a className="yn-hero-photo" href={'/vehicle/' + encodeURIComponent(current.id)} key={current.id}>
         <img src={current.photos[0]} alt={current.name} fetchPriority="high" decoding="async" />
@@ -90,7 +101,7 @@ export default function Showroom({ api, formatPricing, logo, defaultWhatsApp, de
       <section id="experience" className="yn-hero"><div className="yn-shell yn-stage">
         <div className="yn-headline"><p className="yn-label"><i /> Location premium en Île-de-France</p>
           <h1>Prenez le <em>volant.</em></h1>
-          <p className="yn-intro">{settings.tagline || 'Location de véhicules premium.'}</p>
+          <p className="yn-intro">{settings.tagline && settings.tagline !== 'Location de véhicules premium.' ? settings.tagline : 'Choisissez votre modèle et vos dates. YNR vous confirme sa disponibilité.'}</p>
           <a className="yn-primary" href="#fleet">Découvrir la flotte <ChevronDown size={17} /></a>
         </div>
         <div className="yn-model"><HeroGallery vehicles={catalog.vehicles} loading={status === 'loading'} /></div>

@@ -74,3 +74,7 @@
 @media(max-width:760px){.yn-stage{grid-template-columns:1fr;padding-block:36px;gap:25px}.yn-headline h1{margin:12px 0;font-size:clamp(55px,10vw,78px)}.yn-headline h1 em{display:inline}.yn-show .yn-intro{margin-bottom:18px}.yn-bar{min-height:62px;gap:12px}.yn-contact-btn{margin-left:auto}.yn-toggle{display:grid;place-items:center;border:0;background:transparent;width:44px;height:44px}.yn-nav{display:none;position:absolute;inset:100% 0 auto;padding:12px 5%;background:#101825;border-bottom:1px solid var(--line)}.yn-nav.expanded{display:grid;gap:0}.yn-nav a{padding:12px}.yn-process ol{grid-template-columns:1fr;gap:20px}.yn-process li p{max-width:none}.yn-footer-content{grid-template-columns:1fr;gap:24px}.yn-footer{padding-bottom:85px}}
 @media(max-width:580px){.yn-grid{grid-template-columns:1fr;gap:18px}.yn-section-head{margin-bottom:20px}.yn-card-body{padding:16px}.yn-section-head h2{font-size:50px}.yn-sort select{max-width:145px}.yn-deck{padding-inline:9px}.yn-label{font-size:10px}.yn-concept{aspect-ratio:1.4}.yn-shell{width:91%}.yn-brand{font-size:18px}.yn-brand img.logo{width:34px;height:34px}.yn-brand{gap:6px}.yn-brand b{font-size:9px}.yn-contact-btn{padding:8px 11px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+@media(hover:hover) and (prefers-reduced-motion:no-preference){
+  .yn-display{transform:rotateY(var(--turn,0deg)) rotateX(var(--lift,0deg));transition:transform .18s ease-out}
+}
