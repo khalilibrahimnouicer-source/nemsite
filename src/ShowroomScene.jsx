@@ -130,49 +130,109 @@ function createRenderer(canvas, model) {
   }}
 }
 
-export default function ShowroomScene() {
-  const canvas = useRef(null)
-  const angle = useRef(initialAngle)
-  const draw = useRef(()=>{})
-  const drag = useRef(null)
-  const [ready,setReady] = useState(false)
+// Project the same faces into a small depth buffer when hardware rendering is unavailable.
+function createCanvasRenderer(canvas, model) {
+  const ctx=canvas.getContext('2d')
+  if (!ctx) return null
+  const points=[], indices=new Map(), triangles=[]
+  function pointIndex(point) {
+    const key=point.join(',')
+    if (!indices.has(key)) {indices.set(key,points.length);points.push(point)}
+    return indices.get(key)
+  }
+  for (const {vertices,color} of model) {
+    const rgb=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16))
+    const mapped=vertices.map(pointIndex)
+    for(let j=1;j<mapped.length-1;j++) triangles.push([mapped[0],mapped[j],mapped[j+1],...rgb])
+  }
+  let bitmap, depth
+  return { dispose(){}, paint(w,h,angle,zoom) {
+    const width=canvas.width, height=canvas.height
+    if (!bitmap || bitmap.width!==width || bitmap.height!==height) {
+      bitmap=ctx.createImageData(width,height)
+      depth=new Float32Array(width*height)
+    }
+    bitmap.data.fill(0);depth.fill(0)
+    const c=Math.cos(angle),s=Math.sin(angle)
+    const projected=points.map(([x,y,z])=>{
+      const side=x*c-z*s, forward=x*s+z*c
+      const up=(y-.68)*.982004-forward*.188859
+      const inverse=1/(9-forward*.982004-(y-.68)*.188859)
+      return [(w*.5+side*zoom*9*inverse)*width/w,(h*.51-up*zoom*9*inverse)*height/h,inverse]
+    })
+    for(const [ia,ib,ic,r,g,b] of triangles) {
+      const [ax,ay,az]=projected[ia], [bx,by,bz]=projected[ib], [cx,cy,cz]=projected[ic]
+      const determinant=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy)
+      if(Math.abs(determinant)<.0001)continue
+      const left=Math.max(0,Math.ceil(Math.min(ax,bx,cx)-.5)), right=Math.min(width-1,Math.floor(Math.max(ax,bx,cx)-.5))
+      const top=Math.max(0,Math.ceil(Math.min(ay,by,cy)-.5)), bottom=Math.min(height-1,Math.floor(Math.max(ay,by,cy)-.5))
+      const uX=(by-cy)/determinant, uY=(cx-bx)/determinant, vX=(cy-ay)/determinant, vY=(ax-cx)/determinant
+      for(let y=top;y<=bottom;y++){
+        let u=uX*(left+.5-cx)+uY*(y+.5-cy),v=vX*(left+.5-cx)+vY*(y+.5-cy)
+        for(let x=left;x<=right;x++,u+=uX,v+=vX){
+          if(u<0 || v<0 || u+v>1)continue
+          const distance=cz+u*(az-cz)+v*(bz-cz), index=y*width+x
+          if(distance<=depth[index])continue
+          depth[index]=distance
+          const pixel=index*4
+          bitmap.data[pixel]=r;bitmap.data[pixel+1]=g;bitmap.data[pixel+2]=b;bitmap.data[pixel+3]=255
+        }
+      }
+    }
+    ctx.putImageData(bitmap,0,0)
+  }}
+}
 
-  function rotate(amount) { angle.current += amount; draw.current() }
+export default function ShowroomScene() {
+  const canvas=useRef(null),fallbackCanvas=useRef(null)
+  const angle=useRef(initialAngle),draw=useRef(()=>{}),drag=useRef(null)
+  const [mode,setMode]=useState('static')
+  function rotate(amount){angle.current+=amount;draw.current()}
   useEffect(()=>{
-    const node=canvas.current
-    if (!node) return
-    let renderer=createRenderer(node,buildCoupe())
-    if (!renderer) return
-    let frame=0
+    const gpuCanvas=canvas.current, cpuCanvas=fallbackCanvas.current
+    const model=buildCoupe()
+    let surface, renderer,frame=0
     const paint=()=>{
       frame=0
-      const w=node.clientWidth,h=node.clientHeight
-      if(!w || !h) return
-      const dpr=Math.min(window.devicePixelRatio || 1,1.75)
-      const bw=Math.round(w*dpr),bh=Math.round(h*dpr)
-      if(node.width!==bw || node.height!==bh){node.width=bw;node.height=bh}
-      renderer?.paint(w,h,angle.current,Math.min(w/5.25,h/2.6))
+      if(!renderer)return
+      const w=surface.clientWidth,h=surface.clientHeight
+      if(!w||!h)return
+      const dpr=Math.min(window.devicePixelRatio||1,1.75,surface===cpuCanvas?800/w:Infinity)
+      const width=Math.round(w*dpr),height=Math.round(h*dpr)
+      if(surface.width!==width||surface.height!==height){surface.width=width;surface.height=height}
+      renderer.paint(w,h,angle.current,Math.min(w/5.25,h/2.6))
+    }
+    const selectRenderer=(allowGPU)=>{
+      renderer?.dispose()
+      surface=gpuCanvas
+      renderer=allowGPU?createRenderer(surface,model):null
+      if(!renderer){surface=cpuCanvas;renderer=createCanvasRenderer(surface,model)}
+      setMode(renderer?(surface===gpuCanvas?'gpu':'canvas'):'static')
+      paint()
     }
     draw.current=()=>{if(!frame)frame=requestAnimationFrame(paint)}
-    const lost=e=>{e.preventDefault();setReady(false)}
-    const restored=()=>{renderer?.dispose();renderer=createRenderer(node,buildCoupe());setReady(!!renderer);paint()}
-    node.addEventListener('webglcontextlost',lost)
-    node.addEventListener('webglcontextrestored',restored)
-    paint();setReady(true)
+    const lost=e=>{e.preventDefault();selectRenderer(false)}
+    const restored=()=>selectRenderer(true)
+    gpuCanvas.addEventListener('webglcontextlost',lost)
+    gpuCanvas.addEventListener('webglcontextrestored',restored)
+    selectRenderer(true)
     const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(draw.current)
-    observer?.observe(node)
+    observer?.observe(gpuCanvas.parentElement)
     window.addEventListener('resize',draw.current)
-    return ()=>{node.removeEventListener('webglcontextlost',lost);node.removeEventListener('webglcontextrestored',restored);renderer?.dispose();observer?.disconnect();window.removeEventListener('resize',draw.current);cancelAnimationFrame(frame);draw.current=()=>{}}
+    return ()=>{gpuCanvas.removeEventListener('webglcontextlost',lost);gpuCanvas.removeEventListener('webglcontextrestored',restored);renderer?.dispose();observer?.disconnect();window.removeEventListener('resize',draw.current);cancelAnimationFrame(frame);draw.current=()=>{}}
   },[])
 
   return <div className="ynr-scene">
-    {!ready && <div className="ynr-scene-fallback" role="img" aria-label="Silhouette de coupé sportif"><i/><b/><b/></div>}
-    <canvas ref={canvas} role="img" aria-label="Étude de style YNR, coupé bleu en trois dimensions" tabIndex={ready?0:-1}
+    {mode==='static' && <div className="ynr-scene-fallback" role="img" aria-label="Silhouette de coupé sportif"><i/><b/><b/></div>}
+    <div style={{position:'absolute',inset:0,touchAction:'pan-y'}} role="img" aria-label="Étude de style YNR, coupé bleu en trois dimensions" tabIndex={mode==='static'?-1:0}
       onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();rotate(e.key==='ArrowLeft'?-.22:.22)}}}
       onPointerDown={e=>{if(!e.isPrimary||e.button!==0)return;drag.current={x:e.clientX,angle:angle.current};e.currentTarget.setPointerCapture(e.pointerId)}}
       onPointerMove={e=>{if(drag.current&&e.isPrimary){angle.current=drag.current.angle-(e.clientX-drag.current.x)*.009;draw.current()}}}
-      onLostPointerCapture={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}} onPointerUp={()=>{drag.current=null}}/>
-    {ready && <div className="ynr-scene-controls" role="group" aria-label="Rotation du coupé">
+      onLostPointerCapture={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}} onPointerUp={()=>{drag.current=null}}>
+      <canvas ref={canvas} aria-hidden="true" style={{position:'absolute',inset:0,visibility:mode==='gpu'?'visible':'hidden'}}/>
+      <canvas ref={fallbackCanvas} aria-hidden="true" style={{position:'absolute',inset:0,visibility:mode==='canvas'?'visible':'hidden'}}/>
+    </div>
+    {mode!=='static' && <div className="ynr-scene-controls" role="group" aria-label="Rotation du coupé">
       <button type="button" aria-label="Tourner à gauche" onClick={()=>rotate(-.32)}>←</button><span>Vue 360°</span><button type="button" aria-label="Tourner à droite" onClick={()=>rotate(.32)}>→</button>
     </div>}
   </div>
