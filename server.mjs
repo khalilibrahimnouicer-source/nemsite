@@ -1,7 +1,10 @@
 import express from 'express'
+import { registerReservations } from './reservations.mjs'
+import { registerSaleLab } from './sale-lab.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
@@ -57,7 +60,8 @@ function loadBundledStore() {
 
 let memory = loadBundledStore()
 const loginAttempts = new Map()
-const requestAttempts = new Map()
+const storeVersions = new WeakMap()
+let localWriteQueue = Promise.resolve()
 
 function clean(v, max = 1000) { return typeof v === 'string' ? v.trim().slice(0, max) : '' }
 function normalizeVisiblePrices(value) {
@@ -75,7 +79,12 @@ function normalizeStore(value) {
   }) : []
   return {
     settings: source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings) ? { ...seed.settings, ...source.settings } : structuredClone(seed.settings),
-    vehicles,
+    vehicles: vehicles.sort((a,b) => {
+      const left = Number.isInteger(a.displayOrder) ? a.displayOrder : Infinity
+      const right = Number.isInteger(b.displayOrder) ? b.displayOrder : Infinity
+      if (left !== right) return left-right
+      return (Date.parse(b.createdAt || b.updatedAt) || 0) - (Date.parse(a.createdAt || a.updatedAt) || 0)
+    }),
     requests: Array.isArray(source.requests) ? source.requests.filter(Boolean) : [],
     blocked: Array.isArray(source.blocked) ? source.blocked.filter(Boolean) : []
   }
@@ -143,21 +152,24 @@ async function readStore() {
       if (result?.stream) {
         const parsed = JSON.parse(await new Response(result.stream).text())
         const normalized = normalizeStore(parsed)
+        storeVersions.set(normalized,result.blob.etag)
         memory = structuredClone(normalized)
         return normalized
       }
       const existing = normalizeStore(memory)
-      await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
+      const created = await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
         allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
       }))
+      storeVersions.set(existing,created.etag)
       memory = structuredClone(existing)
       return existing
     } catch (error) {
       if (isBlobNotFound(error)) {
         const existing = normalizeStore(memory)
-        await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
+        const created = await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
           allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
         }))
+        storeVersions.set(existing,created.etag)
         memory = structuredClone(existing)
         return existing
       }
@@ -167,7 +179,9 @@ async function readStore() {
   }
   if (isProd) throw new Error('Le stockage Blob persistant n’est pas configuré.')
   try {
-    const normalized = normalizeStore(JSON.parse(await fs.readFile(DATA_FILE, 'utf8')))
+    const raw = await fs.readFile(DATA_FILE,'utf8')
+    const normalized = normalizeStore(JSON.parse(raw))
+    storeVersions.set(normalized,crypto.createHash('sha256').update(raw).digest('hex'))
     memory = structuredClone(normalized)
     return normalized
   } catch {
@@ -179,26 +193,37 @@ async function readStore() {
 
 async function writeStore(store) {
   const normalized = normalizeStore(store)
-  memory = structuredClone(normalized)
+  const version = storeVersions.get(store)
   const serialized = JSON.stringify(normalized, null, 2)
   if (blobEnabled) {
     try {
       await put(STORE_PATH, serialized, blobOptions('private', {
-        allowOverwrite: true, addRandomSuffix: false, contentType: 'application/json'
+        allowOverwrite: true, ...(version ? {ifMatch:version} : {}), addRandomSuffix: false, contentType: 'application/json'
       }))
+      memory = structuredClone(normalized)
       return
     } catch (error) {
+      if (error.name === 'BlobPreconditionFailedError' || error.statusCode === 412) throw Object.assign(error,{status:412})
       console.error('[YNR] Blob write failed:', error?.message || error)
       if (isProd) throw new Error('Le stockage Blob est inaccessible. La modification n’a pas été enregistrée.')
     }
   }
-  try {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
-    await fs.writeFile(DATA_FILE, serialized)
-  } catch (error) {
-    console.error('[YNR] persistent store unavailable:', error?.message || error)
-    if (isProd) throw new Error('Aucun stockage persistant disponible en production.')
-  }
+  const write = localWriteQueue.then(async () => {
+    await fs.mkdir(path.dirname(DATA_FILE),{recursive:true})
+    if (version) {
+      const current = await fs.readFile(DATA_FILE)
+      if (crypto.createHash('sha256').update(current).digest('hex') !== version)
+        throw Object.assign(new Error('Le catalogue a changé. Réessayez.'),{status:412})
+    }
+    const tmp = DATA_FILE+'.'+crypto.randomUUID()+'.tmp'
+    try {
+      await fs.writeFile(tmp,serialized)
+      await fs.rename(tmp,DATA_FILE)
+    } finally { await fs.rm(tmp,{force:true}) }
+    memory = structuredClone(normalized)
+  })
+  localWriteQueue = write.catch(()=>{})
+  return write
 }
 
 app.disable('x-powered-by')
@@ -289,11 +314,11 @@ app.get('/api/public', async (req, res) => {
 
   const sourceVehicles = Array.isArray(s.vehicles) ? s.vehicles : []
   let vehicles = sourceVehicles.filter(v => v && v.active !== false && !isArchived(v))
-  const sort = String(req.query.sort || 'recent')
+  const sort = String(req.query.sort || 'manual')
   const dir = String(req.query.dir || 'asc') === 'desc' ? -1 : 1
   if (sort === 'price') vehicles.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir)
   else if (sort === 'name') vehicles.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }) * dir)
-  else vehicles.sort((a, b) => (Boolean(b.featured) - Boolean(a.featured)) || (new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0)))
+  else if (sort === 'recent') vehicles.sort((a, b) => (Boolean(b.featured) - Boolean(a.featured)) || (new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0)))
 
   res.json({ settings: s.settings || seed.settings, vehicles: vehicles.map(publicVehicle), blocked: s.blocked || [] })
 })
@@ -454,39 +479,33 @@ async function notifyReservation(request) {
   }
 }
 
-app.post('/api/requests', async (req, res) => {
-  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].slice(0, 100)
-  const now = Date.now(), recent = (requestAttempts.get(ip) || []).filter(x => now - x < 900000)
-  if (recent.length >= 8) return res.status(429).json({ message: 'Trop de demandes. Réessayez plus tard.' })
-  recent.push(now); requestAttempts.set(ip, recent)
-  const b = req.body || {}
-  if (clean(b.website, 50)) return res.status(400).json({ message: 'Demande invalide' })
-  const name = clean(b.name, 100), email = clean(b.email, 254).toLowerCase(), phone = clean(b.phone, 40), vehicleId = clean(b.vehicleId, 100), vehicle = clean(b.vehicle, 150), start = clean(b.start, 20), end = clean(b.end, 20), message = clean(b.message, 2000)
-  const requiredDocs = ['identity', 'license', 'address']
-  const documents = {}
-  for (const type of requiredDocs) {
-    const data = String(b.documents?.[type]?.data || '')
-    const match = data.match(/^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/)
-    if (!match) return res.status(400).json({ message: 'Ajoutez les trois justificatifs demandés.' })
-    const raw = Buffer.from(match[2], 'base64')
-    if (raw.length < 100 || raw.length > 8 * 1024 * 1024) return res.status(400).json({ message: 'Chaque justificatif doit faire moins de 8 Mo.' })
-    if (!blobEnabled) return res.status(503).json({ message: 'Le stockage sécurisé est temporairement indisponible.' })
-    const encryptedName = crypto.createHash('sha256').update(`${type}:${crypto.randomUUID()}`).digest('hex')
-    const extension = match[1] === 'application/pdf' ? 'pdf' : 'jpg'
-    const pathname = `reservations/${new Date().toISOString().slice(0, 10)}/${encryptedName}.${extension}`
-    const blob = await put(pathname, raw, blobOptions('private', { addRandomSuffix: false, contentType: match[1] }))
-    documents[type] = { pathname: blob.pathname, label: type, contentType: match[1], uploadedAt: new Date().toISOString() }
-  }
-  if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[+0-9 ()\-.]{7,40}$/.test(phone) || !vehicle || !start || !end || Number.isNaN(Date.parse(start)) || Number.isNaN(Date.parse(end)) || Date.parse(end) < Date.parse(start)) return res.status(400).json({ message: 'Vérifiez les informations saisies.' })
+registerReservations(app,{readStore,writeStore,notifyReservation,blobEnabled,put,del,blobOptions,isArchived,clean})
+
+if (!process.env.VERCEL && ['development','test',undefined].includes(process.env.NODE_ENV)) {
+  const labDirectory = process.env.NODE_ENV === 'test' ? path.dirname(DATA_FILE) : path.join(homedir(),'.ynr-location')
+  registerSaleLab(app,{auth,readStore,file:path.join(labDirectory,'sale-lab.local.json')})
+}
+
+app.put('/api/fleet-order',auth,async (req,res) => {
+  const ids = req.body?.ids
+  if (!Array.isArray(ids) || ids.some(id=>typeof id!=='string') || new Set(ids).size!==ids.length)
+    return res.status(400).json({message:'Classement invalide.'})
   try {
-    const s = await readStore()
-    const reservation = { id: crypto.randomUUID(), name, email, phone, vehicleId, vehicle, start, end, message, documents, status: 'nouvelle', createdAt: new Date().toISOString() }
-    if (vehicleId && !s.vehicles.some(item => String(item.id) === vehicleId && item.active !== false && !isArchived(item))) return res.status(409).json({ message: 'Ce véhicule n’est plus disponible à la réservation.' })
-    s.requests.unshift(reservation)
-    await writeStore(s)
-    const notification = await notifyReservation(reservation)
-    res.json({ ok: true, notification: notification.sent ? 'sent' : 'not-configured' })
-  } catch (error) { console.error('[YNR] request:', error?.message || error); res.status(503).json({ message: 'Impossible d’enregistrer la demande.' }) }
+    const store = await readStore()
+    const active = store.vehicles.filter(v=>v.active!==false && !isArchived(v))
+    const ranks = new Map(ids.map((id,i)=>[id,i]))
+    if (active.length!==ids.length || active.some(v=>!ranks.has(v.id)))
+      return res.status(409).json({message:'La flotte a changé. Actualisez le classement.'})
+    for (const vehicle of store.vehicles) {
+      if (ranks.has(vehicle.id)) vehicle.displayOrder = ranks.get(vehicle.id)
+      else delete vehicle.displayOrder
+    }
+    await writeStore(store)
+    res.json({ids})
+  } catch (error) {
+    const conflict = error.status===412
+    res.status(conflict?409:503).json({message:conflict?'La flotte a changé. Actualisez le classement.':'Impossible de sauvegarder le classement.'})
+  }
 })
 
 function normalizePricing(value, basePrice = 0) {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { ArrowUpRight } from 'lucide-react'
 import './scroll-fleet.css'
+import { AddToCart } from './CartAndDialog'
 
 // Each photograph follows its own position in the viewport. The page keeps native scrolling.
 export function useVehicleScroll(fleet) {
@@ -61,7 +62,7 @@ export function ScrollFleet({ vehicles, formatPricing }) {
           <h3><a href={url}>{vehicle.name}</a></h3>
           {vehicle.description && <p className="drive-description">{vehicle.description}</p>}
           {vehicle.visiblePrices?.weekday24h !== false && price.base > 0 && <p className="drive-price"><strong>{price.final} €</strong> / 24 h en semaine</p>}
-          <a className="drive-link" href={url}>Voir le véhicule <ArrowUpRight size={17}/></a>
+          <div className="drive-actions"><AddToCart vehicle={vehicle}/><a className="drive-link" href={url}>Voir le véhicule <ArrowUpRight size={17}/></a></div>
         </div>
       </article>
     })}

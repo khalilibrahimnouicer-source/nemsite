@@ -49,10 +49,30 @@ test('API: login, archive, hidden listing, restore, guarded permanent deletion a
   response = await req('/api/vehicles/test-a', { method: 'DELETE' })
   assert.equal(response.status, 401)
 
+  assert.equal((await req('/api/fleet-order',{method:'PUT',body:'{"ids":[]}'})).status,401)
+  assert.equal((await req('/api/sale-lab')).status,401)
+
   response = await req('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'admin@test.invalid', password: 'temporary-local-test-password' }) })
   assert.equal(response.status, 200)
   cookie = response.headers.get('set-cookie')?.split(';')[0] || ''
   assert.match(cookie, /^ynr_session=/)
+
+  const reorder = ids => req('/api/fleet-order', {method:'PUT',body:JSON.stringify({ids})})
+  assert.equal((await reorder(['test-a','test-a'])).status,400)
+  assert.equal((await reorder(['test-b'])).status,409)
+  assert.equal((await reorder(['test-b','test-a'])).status,200)
+  assert.deepEqual((await req('/api/public')).body.vehicles.map(v=>v.id),['test-b','test-a'])
+  assert.deepEqual((await req('/api/admin')).body.vehicles.map(v=>v.id),['test-b','test-a'])
+
+  const unchanged = await fs.readFile(file,'utf8')
+  const offerResponse = await req('/api/sale-lab/offers', {method:'PUT',body:JSON.stringify({vehicleId:'test-a',price:50000})})
+  assert.equal(offerResponse.status,200)
+  const offerId = offerResponse.body.offers[0].id
+  const orderResponse = await req('/api/sale-lab/orders', {method:'POST',body:JSON.stringify({offerId})})
+  assert.equal(orderResponse.status,200)
+  assert.equal(orderResponse.body.orders[0].price,50000)
+  assert.equal((await req('/api/sale-lab')).body.orders.length,1)
+  assert.equal(await fs.readFile(file,'utf8'),unchanged)
 
   // Regression: the live store once had a featuredPhoto that had already
   // been removed from photos. Neither APIs nor galleries must resurrect it.

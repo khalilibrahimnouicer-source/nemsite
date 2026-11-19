@@ -64,3 +64,7 @@
 @media(prefers-reduced-motion:no-preference){
   .drive-frame {transform:translateX(calc(var(--entry,0) * var(--direction,1) * -15%));}
 }
+.yn-request-fields{margin:0;padding:0;min-width:0;border:0}
+.yn-request-vehicle + .yn-request-vehicle{border-top:1px solid #c9d1dc;padding-top:12px}
+.yn-request-vehicle h3{margin:12px 0 4px}
+.drive-actions{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap}.drive-actions .cart-add{margin:0}
