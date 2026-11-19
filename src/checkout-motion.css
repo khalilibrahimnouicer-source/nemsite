@@ -1,0 +1,40 @@
+.yn-dialog {padding:0;border:1px solid #364253;color:#f4f7fb;background:#0d121a;box-shadow:0 28px 90px #0008;overscroll-behavior:contain;color-scheme:dark}
+.yn-dialog::backdrop {background:rgba(3,7,13,.72);backdrop-filter:blur(6px)}
+.yn-dialog-cart {margin:0 0 0 auto;inset:0 0 0 auto;width:min(430px,100%);max-width:100%;height:100dvh;max-height:100dvh;border-width:0 0 0 1px}
+.yn-dialog-order,.yn-dialog-success {width:min(660px,calc(100% - 24px));max-width:none;max-height:90dvh;margin:auto;border-radius:20px}
+.yn-dialog .modal {width:100%;max-width:none;max-height:none;margin:0;overflow:visible;box-shadow:none;border:0;position:relative;animation:none}
+.yn-dialog .close {min-width:44px;min-height:44px}
+.yn-dialog :focus-visible,.yn-cart-fab:focus-visible,.yn-add:focus-visible {outline:2px solid #91bdff;outline-offset:2px}
+.yn-cart-sheet {padding:28px clamp(18px,5vw,32px) max(30px,env(safe-area-inset-bottom));}
+.yn-cart-top,.yn-item-actions {display:flex;align-items:center;justify-content:space-between;gap:14px}
+.yn-cart-top h2 {font:650 32px/1.2 Manrope,sans-serif;letter-spacing:-.05em;margin:0}
+.yn-cart-top button {display:grid;place-items:center;background:#202a36;color:white;border:0;width:44px;height:44px;border-radius:50%}
+.yn-cart-sheet ul {padding:0;margin:26px 0;list-style:none}
+.yn-cart-sheet li {padding:20px 0;border-top:1px solid #354050}
+.yn-item-title {font-size:21px;font-weight:600;letter-spacing:-.035em;overflow-wrap:anywhere}
+.yn-item-actions {margin-top:8px;flex-wrap:wrap}
+.yn-item-actions a,.yn-item-actions button {display:inline-flex;align-items:center;gap:5px;min-height:44px;font-size:14px}
+.yn-item-actions a {color:#9ac5ff}
+.yn-item-actions button {border:0;background:none;color:#c3cfde}
+.yn-cart-empty {color:#b0bdcd;margin-top:30px}
+.cart-fab.yn-cart-fab,.yn-add-inner {display:inline-flex;align-items:center;gap:8px}
+.yn-cart-fab strong {display:grid;place-items:center;border-radius:99px;min-width:22px;height:22px;margin:0;background:#fff;color:#10365c}
+.yn-submit-spinner {width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block}
+.yn-dialog .form-error {color:#ffb6ad}
+@media(prefers-reduced-motion:no-preference){
+  .yn-dialog[open]::backdrop {animation:yn-dim .24s ease both}
+  .yn-dialog.is-closing::backdrop {animation:yn-undim .17s ease both}
+  .yn-dialog-cart[open] {animation:yn-drawer .36s cubic-bezier(.2,.8,.2,1) both}
+  .yn-dialog-order[open],.yn-dialog-success[open] {animation:yn-sheet .32s cubic-bezier(.16,.8,.2,1) both}
+  .yn-add-inner,.yn-cart-fab strong,.yn-dialog-success .confirmation-icon {animation:yn-pop .32s cubic-bezier(.2,.75,.25,1.18) both}
+  .yn-cart-empty,.yn-dialog .form-error {animation:yn-sheet .22s ease-out both}
+  .yn-submit-spinner {animation:yn-spin .8s linear infinite}
+  .yn-add,.yn-cart-fab,.yn-dialog button,.yn-item-actions a {transition:transform .16s ease,background-color .16s ease}
+  .yn-add:active,.yn-cart-fab:active,.yn-dialog button:active,.yn-item-actions a:active {transform:scale(.97)}
+  @keyframes yn-dim{from{opacity:0}to{opacity:1}}
+  @keyframes yn-undim{from{opacity:1}to{opacity:0}}
+  @keyframes yn-drawer{from{transform:translateX(100%)}to{transform:translateX(0)}}
+  @keyframes yn-sheet{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+  @keyframes yn-pop{from{opacity:.3;transform:translateY(3px) scale(.88)}to{opacity:1;transform:none}}
+  @keyframes yn-spin{to{transform:rotate(1turn)}}
+}
