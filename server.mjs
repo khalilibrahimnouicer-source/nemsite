@@ -9,7 +9,8 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
-import { put, del, get } from '@vercel/blob'
+import { put, del, get, head } from '@vercel/blob'
+import {contentVersion,overwriteCatalog} from './catalog-blob.mjs'
 import { isArchived, archiveVehicle, restoreVehicle, removeArchivedVehicle } from './archive-vehicles.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -150,26 +151,27 @@ async function readStore() {
     try {
       const result = await get(STORE_PATH, blobOptions('private', { useCache: false }))
       if (result?.stream) {
-        const parsed = JSON.parse(await new Response(result.stream).text())
+        const raw = await new Response(result.stream).text()
+        const parsed = JSON.parse(raw)
         const normalized = normalizeStore(parsed)
-        storeVersions.set(normalized,result.blob.etag)
+        storeVersions.set(normalized,contentVersion(raw))
         memory = structuredClone(normalized)
         return normalized
       }
       const existing = normalizeStore(memory)
-      const created = await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
+      await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
         allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
       }))
-      storeVersions.set(existing,created.etag)
+      storeVersions.set(existing,contentVersion(JSON.stringify(existing,null,2)))
       memory = structuredClone(existing)
       return existing
     } catch (error) {
       if (isBlobNotFound(error)) {
         const existing = normalizeStore(memory)
-        const created = await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
+        await put(STORE_PATH, JSON.stringify(existing, null, 2), blobOptions('private', {
           allowOverwrite: false, addRandomSuffix: false, contentType: 'application/json'
         }))
-        storeVersions.set(existing,created.etag)
+        storeVersions.set(existing,contentVersion(JSON.stringify(existing,null,2)))
         memory = structuredClone(existing)
         return existing
       }
@@ -197,13 +199,11 @@ async function writeStore(store) {
   const serialized = JSON.stringify(normalized, null, 2)
   if (blobEnabled) {
     try {
-      await put(STORE_PATH, serialized, blobOptions('private', {
-        allowOverwrite: true, ...(version ? {ifMatch:version} : {}), addRandomSuffix: false, contentType: 'application/json'
-      }))
+      await overwriteCatalog({path:STORE_PATH,previous:version,body:serialized,head,get,put,options:blobOptions('private')})
       memory = structuredClone(normalized)
       return
     } catch (error) {
-      if (error.name === 'BlobPreconditionFailedError' || error.statusCode === 412) throw Object.assign(error,{status:412})
+      if (error.status === 412) throw error
       console.error('[YNR] Blob write failed:', error?.message || error)
       if (isProd) throw new Error('Le stockage Blob est inaccessible. La modification n’a pas été enregistrée.')
     }
@@ -491,16 +491,23 @@ app.put('/api/fleet-order',auth,async (req,res) => {
   if (!Array.isArray(ids) || ids.some(id=>typeof id!=='string') || new Set(ids).size!==ids.length)
     return res.status(400).json({message:'Classement invalide.'})
   try {
-    const store = await readStore()
-    const active = store.vehicles.filter(v=>v.active!==false && !isArchived(v))
-    const ranks = new Map(ids.map((id,i)=>[id,i]))
-    if (active.length!==ids.length || active.some(v=>!ranks.has(v.id)))
-      return res.status(409).json({message:'La flotte a changé. Actualisez le classement.'})
-    for (const vehicle of store.vehicles) {
-      if (ranks.has(vehicle.id)) vehicle.displayOrder = ranks.get(vehicle.id)
-      else delete vehicle.displayOrder
+    for (let attempt=0; attempt<3; attempt++) {
+      const store = await readStore()
+      const active = store.vehicles.filter(v=>v.active!==false && !isArchived(v))
+      const ranks = new Map(ids.map((id,i)=>[id,i]))
+      if (active.length!==ids.length || active.some(v=>!ranks.has(v.id)))
+        return res.status(409).json({message:'La flotte a changé. Actualisez le classement.'})
+      for (const vehicle of store.vehicles) {
+        if (ranks.has(vehicle.id)) vehicle.displayOrder = ranks.get(vehicle.id)
+        else delete vehicle.displayOrder
+      }
+      try {
+        await writeStore(store)
+        break
+      } catch (error) {
+        if (error.status !== 412 || attempt === 2) throw error
+      }
     }
-    await writeStore(store)
     res.json({ids})
   } catch (error) {
     const conflict = error.status===412
